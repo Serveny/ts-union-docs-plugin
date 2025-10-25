@@ -1,0 +1,12 @@
+{
+    "name": "ts-union-type-docs-plugin",
+    "version": "0.1.0",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "devDependencies": {
+        "typescript": "^5.6.3"
+    },
+    "scripts": {
+        "build": "tsc"
+    }
+}
