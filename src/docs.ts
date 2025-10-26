@@ -1,65 +1,51 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
+import { UnionParameterInfo } from './info';
 
 export function extractJsDocs(
 	ts: typeof TS,
-	typeNode: TS.TypeNode,
-	checker: TS.TypeChecker
+	param: UnionParameterInfo
 ): string[] {
 	let unionTypeNode: TS.UnionTypeNode | undefined = undefined;
 
 	// is inline union (i.e. param: string | number)
-	if (ts.isUnionTypeNode(typeNode)) {
-		unionTypeNode = typeNode;
-	}
-
-	// is type alias (i.e. type X = string | number)
-	else if (typeNode.kind === ts.SyntaxKind.TypeReference) {
-		const symbol = checker.getSymbolAtLocation(typeNode);
-		if (
-			symbol &&
-			symbol.valueDeclaration &&
-			ts.isTypeAliasDeclaration(symbol.valueDeclaration)
-		) {
-			const aliasDecl = symbol.valueDeclaration;
-			if (ts.isUnionTypeNode(aliasDecl.type)) {
-				unionTypeNode = aliasDecl.type;
-			}
-		}
+	if (ts.isUnionTypeNode(param.node)) {
+		unionTypeNode = param.node;
 	}
 
 	if (unionTypeNode) {
 		const sourceFile = unionTypeNode.getSourceFile();
-		return extractJSDocsFromUnionNode(ts, unionTypeNode, sourceFile);
+		return extractJSDocsFromUnionNode(ts, param, sourceFile);
 	}
 
 	return [];
 }
 
 export function addExtraDocs(quickInfo: TS.QuickInfo, extraDocs: string[]) {
-	if (!quickInfo.documentation) quickInfo.documentation = [];
-	quickInfo.documentation.push(
-		...extraDocs.map((c) => ({ text: c, kind: 'text' } as TS.SymbolDisplayPart))
+	quickInfo.documentation = extraDocs.map(
+		(c) => ({ text: c, kind: 'text' } as TS.SymbolDisplayPart)
 	);
 }
 
 function extractJSDocsFromUnionNode(
 	ts: typeof TS,
-	unionNode: TS.UnionTypeNode,
+	param: UnionParameterInfo,
 	sourceFile: TS.SourceFile
 ): string[] {
-	const lines = [];
 	const sourceText = sourceFile.getFullText();
+	const unionEntry = param.node.types.find((n) =>
+		ts.isLiteralTypeNode(n) && ts.isStringLiteral(n.literal)
+			? n.literal.text === param.value
+			: false
+	);
+	if (!unionEntry) return [];
 
-	for (const memberNode of unionNode.types) {
-		const start = memberNode.getStart();
-		const test = sourceText.slice(start, memberNode.end);
-		const comment = getLeadingComment(ts, sourceText, start);
-		if (comment)
-			lines.push(
-				...cleanJSDocText(sourceText.substring(comment.pos, comment.end))
-			);
+	const start = unionEntry.getStart();
+	const comment = getLeadingComment(ts, sourceText, start);
+	if (comment) {
+		return cleanJSDocText(sourceText.substring(comment.pos, comment.end));
 	}
-	return lines;
+
+	return [];
 }
 
 function getLeadingComment(

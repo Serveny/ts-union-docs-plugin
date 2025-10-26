@@ -19,7 +19,6 @@ export class UnionTypeDocsPlugin {
 	}
 
 	private getQuickInfoAtPosition(fileName: string, pos: number) {
-		console.log('GETQUICKINFO:', fileName, pos);
 		const quickInfo = this.ls.getQuickInfoAtPosition(fileName, pos);
 		if (!quickInfo) return quickInfo;
 
@@ -27,8 +26,10 @@ export class UnionTypeDocsPlugin {
 		if (!info) return quickInfo;
 
 		const extraDocs: string[] = [];
-		for (const param of info.unionParams)
-			extraDocs.push(...extractJsDocs(this.ts, param, info.checker));
+		for (const param of info.unionParams) {
+			const lines = extractJsDocs(this.ts, param);
+			extraDocs.push(...lines);
+		}
 		if (extraDocs.length > 0) addExtraDocs(quickInfo, extraDocs);
 
 		return quickInfo;

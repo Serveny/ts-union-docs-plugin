@@ -6,7 +6,7 @@ export class TypeInfo {
 		public node: TS.Node,
 		public symbol: TS.Symbol,
 		public checker: TS.TypeChecker,
-		public unionParams: TS.UnionTypeNode[]
+		public unionParams: UnionParameterInfo[]
 	) {}
 
 	static from(
@@ -80,19 +80,26 @@ function findNodeAtPosition(
 	return find(sourceFile);
 }
 
+export class UnionParameterInfo {
+	constructor(public node: TS.UnionTypeNode, public value?: string) {}
+}
+
 function getUnionParamters(
 	ts: typeof TS,
 	node: TS.CallExpression,
 	checker: TS.TypeChecker
-): TS.UnionTypeNode[] {
-	const paramTypes: TS.UnionTypeNode[] = [];
+): UnionParameterInfo[] {
+	const paramTypes: UnionParameterInfo[] = [];
 	const signature = checker.getResolvedSignature(node);
 	if (!signature) return paramTypes;
 
+	const args = node.arguments;
 	const params = signature.getParameters();
-	for (const param of params) {
-		const paramNode = getUnionParamNode(ts, checker, param);
-		if (paramNode) paramTypes.push(paramNode);
+	for (let i = 0; i < params.length; i++) {
+		const paramNode = getUnionParamNode(ts, checker, params[i]);
+		const value =
+			args[i] && ts.isStringLiteral(args[0]) ? args[0].text : undefined;
+		if (paramNode) paramTypes.push(new UnionParameterInfo(paramNode, value));
 	}
 
 	return paramTypes;
