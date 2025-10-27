@@ -5,19 +5,15 @@ export function extractJsDocs(
 	ts: typeof TS,
 	param: UnionParameterInfo
 ): string[] {
-	let unionTypeNode: TS.UnionTypeNode | undefined = undefined;
+	const lines: string[] = [];
 
-	// is inline union (i.e. param: string | number)
-	if (ts.isUnionTypeNode(param.node)) {
-		unionTypeNode = param.node;
+	for (const node of param.entries) {
+		// TODO: Cache source files?
+		const sourceFile = node.getSourceFile();
+		lines.push(...extractJSDocsFromNode(ts, node, param.value, sourceFile));
 	}
 
-	if (unionTypeNode) {
-		const sourceFile = unionTypeNode.getSourceFile();
-		return extractJSDocsFromUnionNode(ts, param, sourceFile);
-	}
-
-	return [];
+	return lines;
 }
 
 export function addExtraDocs(quickInfo: TS.QuickInfo, extraDocs: string[]) {
@@ -26,26 +22,19 @@ export function addExtraDocs(quickInfo: TS.QuickInfo, extraDocs: string[]) {
 	);
 }
 
-function extractJSDocsFromUnionNode(
+function extractJSDocsFromNode(
 	ts: typeof TS,
-	param: UnionParameterInfo,
+	node: TS.LiteralTypeNode,
+	value: unknown,
 	sourceFile: TS.SourceFile
 ): string[] {
 	const sourceText = sourceFile.getFullText();
-	const unionEntry = param.node.types.find((n) =>
-		ts.isLiteralTypeNode(n) && ts.isStringLiteral(n.literal)
-			? n.literal.text === param.value
-			: false
-	);
-	if (!unionEntry) return [];
-
-	const start = unionEntry.getStart();
+	const start = node.getStart();
 	const comment = getLeadingComment(ts, sourceText, start);
-	if (comment) {
-		return cleanJSDocText(sourceText.substring(comment.pos, comment.end));
-	}
 
-	return [];
+	return comment
+		? cleanJSDocText(sourceText.substring(comment.pos, comment.end))
+		: [];
 }
 
 function getLeadingComment(

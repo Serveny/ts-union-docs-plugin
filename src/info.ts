@@ -60,7 +60,7 @@ export class TypeInfo {
 function getCallExpression(
 	ts: typeof TS,
 	node: TS.Node
-): TS.CallExpression | undefined {
+): TS.CallExpression | null {
 	if (ts.isCallExpression(node)) return node;
 	while (node && !ts.isCallExpression(node)) node = node.parent;
 	return node;
@@ -70,18 +70,22 @@ function findNodeAtPosition(
 	ts: typeof TS,
 	sourceFile: TS.SourceFile,
 	position: number
-): TS.Node | undefined {
-	function find(node: TS.Node): TS.Node | undefined {
+): TS.Node | null {
+	function find(node: TS.Node): TS.Node | null {
 		if (position >= node.getStart() && position < node.getEnd()) {
 			return ts.forEachChild(node, find) || node;
 		}
-		return undefined;
+		return null;
 	}
 	return find(sourceFile);
 }
 
 export class UnionParameterInfo {
-	constructor(public node: TS.UnionTypeNode, public value?: string) {}
+	constructor(
+		// Can be multiple nodes because different union types can have same values
+		public entries: TS.LiteralTypeNode[],
+		public value?: string
+	) {}
 }
 
 function getUnionParamters(
@@ -96,34 +100,105 @@ function getUnionParamters(
 	const args = node.arguments;
 	const params = signature.getParameters();
 	for (let i = 0; i < params.length; i++) {
-		const paramNode = getUnionParamNode(ts, checker, params[i]);
-		const value =
-			args[i] && ts.isStringLiteral(args[0]) ? args[0].text : undefined;
-		if (paramNode) paramTypes.push(new UnionParameterInfo(paramNode, value));
+		const paramNodes = getUnionParamNodes(ts, checker, params[i]);
+		if (paramNodes.length === 0) continue;
+
+		const arg = args[i];
+		const value = ts.isStringLiteral(arg) ? arg.text : undefined;
+
+		const valueNodes: TS.LiteralTypeNode[] = [];
+		for (const unionNode of paramNodes) {
+			const entries = unionNode.types.filter((entry) =>
+				isNodeEqualValue(ts, entry, value)
+			);
+			valueNodes.push(...entries);
+		}
+
+		paramTypes.push(new UnionParameterInfo(valueNodes, value));
 	}
 
 	return paramTypes;
 }
 
-function getUnionParamNode(
+function getUnionParamNodes(
 	ts: typeof TS,
 	checker: TS.TypeChecker,
 	param: TS.Symbol
-): TS.UnionTypeNode | undefined {
+): TS.UnionTypeNode[] {
 	const decl = param.valueDeclaration;
-	if (!decl || !ts.isParameter(decl) || !decl.type) return;
+	if (!decl || !ts.isParameter(decl) || !decl.type) return [];
+	let srcType = decl.type;
+	const kind = ts.SyntaxKind[srcType.kind];
+	if (ts.isTypeOperatorNode(srcType)) {
+		const type = checker.getTypeAtLocation(srcType);
+		if (type.isUnion()) checker.typeToTypeNode(type, decl, undefined);
+	} else if (ts.isUnionTypeNode(srcType)) return [srcType];
 
-	const typeNode = decl.type;
-	if (ts.isUnionTypeNode(typeNode)) return typeNode;
+	if (ts.isTypeReferenceNode(srcType))
+		return findUnionTypes(ts, checker, srcType);
 
-	if (ts.isTypeReferenceNode(typeNode)) {
-		let symbol = checker.getSymbolAtLocation(typeNode.typeName);
-		if (!symbol) return;
-		if (symbol.flags & ts.SymbolFlags.Alias)
-			symbol = checker.getAliasedSymbol(symbol);
+	return [];
+}
 
-		const decl = symbol.declarations?.[0];
-		if (!decl || !ts.isTypeAliasDeclaration(decl)) return;
-		if (ts.isUnionTypeNode(decl.type)) return decl.type;
+function findUnionTypes(
+	ts: typeof TS,
+	checker: TS.TypeChecker,
+	typeRefNode: TS.TypeReferenceNode
+): TS.UnionTypeNode[] {
+	let symbol = checker.getSymbolAtLocation(typeRefNode.typeName);
+	if (!symbol) return [];
+	if (symbol.flags & ts.SymbolFlags.Alias)
+		symbol = checker.getAliasedSymbol(symbol);
+
+	const decl = symbol.declarations?.[0];
+	if (!decl) return [];
+	const kind = ts.SyntaxKind[decl?.kind ?? 0];
+	let type = ts.isTypeParameterDeclaration(decl)
+		? decl.constraint ?? null
+		: ts.isTypeAliasDeclaration(decl)
+		? decl.type
+		: null;
+	if (!type) return [];
+	if (ts.isTypeReferenceNode(type)) return findUnionTypes(ts, checker, type);
+	if (ts.isUnionTypeNode(type)) return walkUnionEntries(ts, type, checker);
+	if (ts.isTypeOperatorNode(type)) {
+		const resolvedType = checker.getTypeAtLocation(type);
+		if (resolvedType.isUnion()) {
+			const resolvedNode = checker.typeToTypeNode(
+				resolvedType,
+				decl,
+				undefined
+			);
+			return resolvedNode ? [resolvedNode as TS.UnionTypeNode] : [];
+		}
+		return [];
 	}
+	return [];
+}
+
+function walkUnionEntries(
+	ts: typeof TS,
+	typeNode: TS.UnionTypeNode,
+	checker: TS.TypeChecker
+): TS.UnionTypeNode[] {
+	const children = typeNode.types
+		.map((t) =>
+			ts.isTypeReferenceNode(t) ? findUnionTypes(ts, checker, t) : []
+		)
+		.flat();
+	return [typeNode, ...children];
+}
+
+export function isNodeEqualValue(
+	ts: typeof TS,
+	typeNode: TS.TypeNode,
+	value: unknown
+): typeNode is TS.LiteralTypeNode {
+	if (ts.isLiteralTypeNode(typeNode)) {
+		const lit = typeNode.literal;
+		if (ts.isStringLiteral(lit)) return lit.text === value;
+		else if (ts.isNumericLiteral(lit)) return parseFloat(lit.text) === value;
+	}
+
+	return false;
 }

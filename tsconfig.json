@@ -6,6 +6,9 @@
     "declaration": true,
     "outDir": "dist",
     "sourceMap": true,
+    "alwaysStrict": true,
+    "strictNullChecks": true,
+    "noImplicitReturns": true,
   },
   "include": [
     "src"
