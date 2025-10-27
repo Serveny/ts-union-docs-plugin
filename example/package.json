@@ -1,0 +1,9 @@
+{
+    "name": "example-union-type-docs",
+    "version": "0.0.1",
+    "type": "module",
+    "devDependencies": {
+        "typescript": "^5.6.3",
+        "ts-union-type-docs-plugin": "file:../ts-union-type-docs-plugin"
+    }
+}

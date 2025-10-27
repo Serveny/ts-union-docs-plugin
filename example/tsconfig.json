@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "plugins": [
+      {
+        "name": "ts-union-type-docs-plugin"
+      }
+    ]
+  },
+  "include": [
+    "src"
+  ]
+}
