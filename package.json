@@ -10,6 +10,7 @@
         "build": "tsc",
         "watch": "tsc --watch",
         "refresh": "npm run build && cd example && npm i",
-        "refresh-watch": "npx nodemon -w ./src -e ts -x \"npx tsc && cd ../example && npm i\""
+        "refresh-watch": "npx nodemon -w ./src -e ts -x \"npx tsc && cd ../example && npm i\"",
+        "debug": "TSS_DEBUG=5667 code ../example --user-data-dir ~/.vscode-debug/"
     }
 }
