@@ -2,6 +2,10 @@
 
 A TypeScript Language Service plugin that displays JSDoc comments from union type members directly in your editor's quick info (hover) tooltips.
 
+<p align="center">
+	<img width="700" height="393" alt="image" src="https://github.com/user-attachments/assets/e79d79e7-173a-4399-aad5-99ebc1ec2c27" />
+</p>
+
 ## 💡 The Problem
 
 By default, when you use a value from a union type, TypeScript's quick info just shows the literal value or the base union type. Documentation associated with that specific member of the union is ignored.
@@ -14,14 +18,19 @@ type Color =
 	 * Primary color
 	 */
 	| 'red'
+	
 	/**
 	 * Secondary color
 	 */
 	| 'green'
+	
 	/**
-	 * Accent color
+	 * Third color
+	 * 
+	 * I'm blue da ba dee
 	 */
 	| 'blue';
+
 
 /**
  * Log color function
