@@ -6,33 +6,59 @@ type Color =
 	 * Primary color
 	 */
 	| 'red'
+
 	/**
 	 * Secondary color
 	 */
 	| 'green'
+
 	/**
-	 * Accent color
+	 * Third color
+	 *
+	 * I'm blue da ba dee
 	 */
 	| 'blue';
 
 /**
- * Const test
+ * logColor docs
  */
-const color: Color = 'red';
-
-/**
- * function test
- */
-function logColor(color: Color): void {
-	console.log(color);
+function logColor(color: Color, color2: Color): void {
+	console.log(color, color2);
 }
 
-logColor('green');
+logColor('red', 'green');
 
+/**
+ * Very complex example
+ */
 type Group = MixxxControls.MixxxGroup;
 type Control<TGroup> = MixxxControls.MixxxControl<TGroup>;
 type ControlRW<TGroup> = MixxxControls.MixxxControlReadAndWrite<TGroup>;
 
-function getValue<TGroup extends Group>(group: TGroup, name: Control<TGroup>): number { return 0; }
+/**
+ * getValue docs
+ */
+function getValue<TGroup extends Group>(
+	group: TGroup,
+	name: Control<TGroup>
+): number {
+	return 0;
+}
 
-getValue("[Master]", "PeakIndicator")
+getValue('[Channel1]', 'cue_mode');
+
+/**
+ * Inline union docs function
+ */
+function test(
+	x: /**
+	 * Bla docs
+	 * */
+	| 'bla'
+		/**
+		 * Blub docs
+		 * */
+		| 'blub'
+) {}
+
+test('bla');
