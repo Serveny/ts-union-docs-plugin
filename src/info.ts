@@ -58,6 +58,7 @@ export class TypeInfoFactory {
 		while (node && !this.ts.isCallExpression(node)) node = node.parent;
 		return node;
 	}
+
 	private getUnionParamters(callExpr: TS.CallExpression): UnionParameterInfo[] {
 		const paramTypes: UnionParameterInfo[] = [];
 		const signature = this.checker.getResolvedSignature(callExpr);
@@ -98,9 +99,48 @@ export class TypeInfoFactory {
 		const ts = this.ts,
 			checker = this.checker;
 
-		if (ts.isUnionTypeNode(node)) {
+		if (
+			ts.isUnionTypeNode(node) ||
+			ts.isIntersectionTypeNode(node) ||
+			ts.isHeritageClause(node)
+		) {
 			return node.types.map((tn) => this.collectUnionMemberNodes(tn)).flat();
 		}
+
+		if (ts.isConditionalTypeNode(node)) {
+			return [
+				...this.collectUnionMemberNodes(node.checkType),
+				...this.collectUnionMemberNodes(node.extendsType),
+				...this.collectUnionMemberNodes(node.trueType),
+				...this.collectUnionMemberNodes(node.falseType),
+			];
+		}
+
+		if (ts.isIndexedAccessTypeNode(node)) {
+			return [
+				...this.collectUnionMemberNodes(node.objectType),
+				...this.collectUnionMemberNodes(node.indexType),
+			];
+		}
+
+		if (ts.isTypeLiteralNode(node)) {
+			return node.members
+				.map((m) =>
+					(m as any).type ? this.collectUnionMemberNodes((m as any).type) : []
+				)
+				.flat();
+		}
+
+		if (ts.isMappedTypeNode(node)) {
+			const results: TS.TypeNode[] = [];
+			if (node.typeParameter.constraint)
+				results.push(
+					...this.collectUnionMemberNodes(node.typeParameter.constraint)
+				);
+			if (node.type) results.push(...this.collectUnionMemberNodes(node.type));
+			return results;
+		}
+
 		if (ts.isTypeReferenceNode(node)) {
 			const symbol = checker.getSymbolAtLocation(node.typeName);
 			if (!symbol) return [];
@@ -119,6 +159,7 @@ export class TypeInfoFactory {
 			if (!tn) return [];
 			return this.collectUnionMemberNodes(tn);
 		}
+
 		if (ts.isTypeOperatorNode(node)) {
 			if (node.operator === ts.SyntaxKind.KeyOfKeyword) {
 				const type = checker.getTypeAtLocation(node.type);
@@ -134,12 +175,32 @@ export class TypeInfoFactory {
 				});
 			}
 		}
+
 		if (ts.isParenthesizedTypeNode(node)) {
 			return this.collectUnionMemberNodes(node.type);
 		}
-		if (ts.isTypeNode(node)) {
+
+		if (ts.isArrayTypeNode(node)) {
+			return this.collectUnionMemberNodes(node.elementType);
+		}
+
+		if (ts.isTupleTypeNode(node)) {
+			return node.elements.map((el) => this.collectUnionMemberNodes(el)).flat();
+		}
+
+		if (ts.isTypeQueryNode(node)) {
+			const symbol = checker.getSymbolAtLocation(node.exprName);
+			if (symbol) {
+				const decls = symbol.getDeclarations() ?? [];
+				return decls.flatMap((d) => this.collectUnionMemberNodes(d as TS.Node));
+			}
+			return [];
+		}
+
+		if (ts.isLiteralTypeNode(node) || ts.isTypeNode(node)) {
 			return [node];
 		}
+
 		return [];
 	}
 

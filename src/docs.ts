@@ -16,9 +16,12 @@ export function addExtraDocs(
 
 function addDocComment(ts: typeof TS, param: UnionParameterInfo) {
 	for (const node of param.entries) {
-		// TODO: Cache source files?
-		const sourceFile = node.getSourceFile();
-		param.docComment = extractJSDocsFromNode(ts, node, sourceFile);
+		// If the node was resolved, get the original node
+		const nodeWithDocs = (node as any).original ?? node;
+		const sourceFile = nodeWithDocs.getSourceFile();
+		if (!sourceFile) continue;
+
+		param.docComment = extractJSDocsFromNode(ts, nodeWithDocs, sourceFile);
 	}
 }
 
@@ -32,7 +35,7 @@ ${paramBlocks.join('\n')}
 }
 
 function paramMarkdown(info: UnionParameterInfo): string {
-	const docs = info.docComment?.join('\n');
+	const docs = info.docComment?.join('\n') ?? '';
 	return `\n#### ${numberEmoji(info.i + 1)} ${info.name}: _${
 		info.value
 	}_\n${docs}`;
@@ -40,7 +43,7 @@ function paramMarkdown(info: UnionParameterInfo): string {
 
 function extractJSDocsFromNode(
 	ts: typeof TS,
-	node: TS.TypeNode,
+	node: TS.Node,
 	sourceFile: TS.SourceFile
 ): string[] {
 	const sourceText = sourceFile.getFullText();
