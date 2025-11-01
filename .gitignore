@@ -64,9 +64,6 @@ typings/
 # cra
 .cache
 
-# tdsx
-dist
-
 .yarn/cache
 .yarn/unplugged
 .yarn/build-state.yml

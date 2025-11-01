@@ -3,6 +3,15 @@
     "version": "0.1.0",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
+    "files": [
+        "dist",
+        "README.md"
+    ],
+    "prepublishOnly": "npm run build",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Serveny/ts-union-type-docs-plugin"
+    },
     "devDependencies": {
         "typescript": "^5.6.3"
     },
