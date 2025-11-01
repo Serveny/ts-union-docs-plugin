@@ -1,17 +1,19 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
-import { addExtraDocs, extractJsDocs, ParamDocs } from './docs';
-import { TypeInfo } from './info';
+import { addExtraDocs } from './docs';
+import { TypeInfoFactory } from './info';
 
 export class UnionTypeDocsPlugin {
 	private logger!: TS.server.Logger;
 	private ls!: TS.LanguageService;
 	private proxy!: TS.LanguageService;
+	private typeInfoFactory!: TypeInfoFactory;
 
 	constructor(private readonly ts: typeof TS) {}
 
 	create(info: TS.server.PluginCreateInfo) {
 		this.logger = info.project.projectService.logger;
 		this.ls = info.languageService;
+		this.typeInfoFactory = new TypeInfoFactory(this.ts, this.ls)!;
 		this.proxy = createLsProxy(this.ls);
 		this.proxy.getQuickInfoAtPosition = this.getQuickInfoAtPosition.bind(this);
 		this.logger.info('[Union type docs plugin] Loaded');
@@ -22,16 +24,10 @@ export class UnionTypeDocsPlugin {
 		const quickInfo = this.ls.getQuickInfoAtPosition(fileName, pos);
 		if (!quickInfo) return quickInfo;
 
-		const info = TypeInfo.from(this.ts, this.ls, fileName, pos);
-		if (!info) return quickInfo;
+		const typeInfo = this.typeInfoFactory.create(fileName, pos);
+		if (!typeInfo) return quickInfo;
 
-		const extraDocs: ParamDocs[] = [];
-		for (const param of info.unionParams) {
-			const docComment = extractJsDocs(this.ts, param);
-			if (docComment.length > 0)
-				extraDocs.push(new ParamDocs(param.i, param.name, docComment));
-		}
-		if (extraDocs.length > 0) addExtraDocs(quickInfo, extraDocs);
+		addExtraDocs(this.ts, quickInfo, typeInfo);
 
 		return quickInfo;
 	}

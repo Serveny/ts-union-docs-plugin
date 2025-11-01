@@ -1,44 +1,41 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
-import { UnionParameterInfo } from './info';
+import { TypeInfo, UnionParameterInfo } from './info';
 
-export function extractJsDocs(
+export function addExtraDocs(
 	ts: typeof TS,
-	param: UnionParameterInfo
-): string[] {
-	const lines: string[] = [];
+	quickInfo: TS.QuickInfo,
+	typeInfo: TypeInfo
+) {
+	if (typeInfo.unionParams.length === 0) return;
+	typeInfo.unionParams.forEach((p) => addDocComment(ts, p));
+	quickInfo.documentation = [
+		...(quickInfo.documentation ?? []),
+		{ text: createMarkdown(typeInfo), kind: 'text' } as TS.SymbolDisplayPart,
+	];
+}
 
+function addDocComment(ts: typeof TS, param: UnionParameterInfo) {
 	for (const node of param.entries) {
 		// TODO: Cache source files?
 		const sourceFile = node.getSourceFile();
-		lines.push(...extractJSDocsFromNode(ts, node, sourceFile));
-	}
-
-	return lines;
-}
-
-export class ParamDocs {
-	constructor(
-		public i: number,
-		public name: string,
-		public docComment: string[]
-	) {}
-	toMarkdown(): string {
-		const docs = this.docComment.join('\n');
-		return `\n#### ${numberEmoji(this.i + 1)} ${this.name} ${docs}`;
+		param.docComment = extractJSDocsFromNode(ts, node, sourceFile);
 	}
 }
 
-export function addExtraDocs(quickInfo: TS.QuickInfo, paramDocs: ParamDocs[]) {
-	const paramBlocks = paramDocs.map((pd) => pd.toMarkdown());
-	const mdText = `\n
+function createMarkdown(typeInfo: TypeInfo) {
+	const paramBlocks = typeInfo.unionParams.map((pi) => paramMarkdown(pi));
+	return `\n
 ---
 ### 🌟 Parameter-Details
 ${paramBlocks.join('\n')}
 `;
-	quickInfo.documentation = [
-		...(quickInfo.documentation ?? []),
-		{ text: mdText, kind: 'text' } as TS.SymbolDisplayPart,
-	];
+}
+
+function paramMarkdown(info: UnionParameterInfo): string {
+	const docs = info.docComment?.join('\n');
+	return `\n#### ${numberEmoji(info.i + 1)} ${info.name}: _${
+		info.value
+	}_\n${docs}`;
 }
 
 function extractJSDocsFromNode(
