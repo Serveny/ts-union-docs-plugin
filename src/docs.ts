@@ -10,11 +10,98 @@ export function addExtraDocs(
 	typeInfo.unionParams.forEach((p) => addDocComment(ts, p));
 	quickInfo.documentation = [
 		...(quickInfo.documentation ?? []),
-		{
-			text: createMarkdown(typeInfo),
-			kind: 'markdown',
-		} as TS.SymbolDisplayPart,
+		createMarkdownDisplayPart(createMarkdown(typeInfo)),
 	];
+}
+
+type TagIdx = {
+	tag: TS.JSDocTagInfo;
+	idx: number;
+};
+
+export function addExtraJSDocTagInfo(
+	ts: typeof TS,
+	quickInfo: TS.QuickInfo,
+	typeInfo: TypeInfo
+) {
+	if (typeInfo.unionParams.length === 0) return;
+	typeInfo.unionParams.forEach((p) => addDocComment(ts, p));
+
+	if (!quickInfo.tags) quickInfo.tags = [];
+
+	const tagIdxs: TagIdx[] =
+		quickInfo.tags
+			?.map((tag, idx) => ({ tag, idx }))
+			.filter((ti) => ti.tag.name === 'param') ?? [];
+
+	const newTags = [
+		...(tagIdxs.length > 0
+			? quickInfo.tags.filter((t, i) => i < tagIdxs[0].idx)
+			: quickInfo.tags),
+	];
+
+	for (const paramInfo of typeInfo.unionParams) {
+		const jsDocTag = findJsDocParamTagByName(tagIdxs, paramInfo.name);
+		const newTag = addParamTagInfo(
+			jsDocTag?.tag ?? defaultParamJSDocTag(paramInfo.name),
+			paramInfo
+		);
+		newTags.push(newTag);
+	}
+
+	const lastParamTagIdx =
+		tagIdxs.length === 0 ? 0 : tagIdxs[tagIdxs.length - 1]?.idx ?? 0;
+	if (quickInfo.tags.length - 1 > lastParamTagIdx)
+		newTags.push(...quickInfo.tags.filter((t, i) => i > lastParamTagIdx));
+
+	quickInfo.tags = newTags;
+}
+
+function findJsDocParamTagByName(tags: TagIdx[], name: string): TagIdx | null {
+	const foundTag = tags.find(({ tag }) =>
+		tag.text?.some(
+			(textPart) =>
+				textPart.kind === 'parameterName' &&
+				textPart.text.toLowerCase() === name.toLowerCase()
+		)
+	);
+	return foundTag ?? null;
+}
+
+function defaultParamJSDocTag(name: string): TS.JSDocTagInfo {
+	return {
+		name: 'param',
+		text: [
+			{
+				kind: 'parameterName',
+				text: name,
+			},
+		],
+	} as TS.JSDocTagInfo;
+}
+
+function createMarkdownDisplayPart(mdText: string): TS.SymbolDisplayPart {
+	return {
+		text: mdText,
+		kind: 'markdown',
+	} as TS.SymbolDisplayPart;
+}
+
+function addParamTagInfo(
+	oldTag: TS.JSDocTagInfo,
+	typeInfo: UnionParameterInfo | undefined
+): TS.JSDocTagInfo {
+	const newTag: TS.JSDocTagInfo = JSON.parse(JSON.stringify(oldTag));
+	if (!typeInfo?.docComment) return newTag;
+	if (!newTag.text) newTag.text = [];
+	newTag.text!.push(
+		createMarkdownDisplayPart(
+			typeInfo.docComment
+				?.map((line, i) => (i > 0 ? (line = '> ' + line) : line))
+				.join('\n')
+		)
+	);
+	return newTag;
 }
 
 function addDocComment(ts: typeof TS, param: UnionParameterInfo) {
@@ -34,14 +121,15 @@ function createMarkdown(typeInfo: TypeInfo) {
 ---
 ### 🌟 Parameter-Details
 ${paramBlocks.join('\n')}
+---
 `;
 }
 
 function paramMarkdown(info: UnionParameterInfo): string {
 	const docs = info.docComment?.join('\n') ?? '';
-	return `\n#### ${numberEmoji(info.i + 1)} ${info.name}: _${
+	return `\n#### ${numberEmoji(info.i + 1)} _${info.name}_ \`${
 		info.value
-	}_\n${docs}`;
+	}\`\n${docs}`;
 }
 
 function extractJSDocsFromNode(
@@ -89,8 +177,8 @@ function prepareJSDocText(rawComment: string): string[] {
 			.split('\n')
 			// remove whitespace and the leading * in every line
 			.map((line) => line.trim().replace(/^\* ?/, ''))
-			// make @tags fat again
-			.map((line) => line.replace(/@(\w+)/g, (_, tag) => `\n**@${tag}**`))
+			// make @tags cursive again
+			.map((line) => line.replace(/@(\w+)/g, (_, tag) => `\n> _@${tag}_`))
 	);
 }
 

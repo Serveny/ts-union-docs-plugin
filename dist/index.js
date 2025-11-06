@@ -1,14 +1,60 @@
 "use strict";
-function addExtraDocs(ts, quickInfo, typeInfo) {
+function addExtraJSDocTagInfo(ts, quickInfo, typeInfo) {
   if (typeInfo.unionParams.length === 0) return;
   typeInfo.unionParams.forEach((p) => addDocComment(ts, p));
-  quickInfo.documentation = [
-    ...quickInfo.documentation ?? [],
-    {
-      text: createMarkdown(typeInfo),
-      kind: "markdown"
-    }
+  if (!quickInfo.tags) quickInfo.tags = [];
+  const tagIdxs = quickInfo.tags?.map((tag, idx) => ({ tag, idx })).filter((ti) => ti.tag.name === "param") ?? [];
+  const newTags = [
+    ...tagIdxs.length > 0 ? quickInfo.tags.filter((t, i) => i < tagIdxs[0].idx) : quickInfo.tags
   ];
+  for (const paramInfo of typeInfo.unionParams) {
+    const jsDocTag = findJsDocParamTagByName(tagIdxs, paramInfo.name);
+    const newTag = addParamTagInfo(
+      jsDocTag?.tag ?? defaultParamJSDocTag(paramInfo.name),
+      paramInfo
+    );
+    newTags.push(newTag);
+  }
+  const lastParamTagIdx = tagIdxs.length === 0 ? 0 : tagIdxs[tagIdxs.length - 1]?.idx ?? 0;
+  if (quickInfo.tags.length - 1 > lastParamTagIdx)
+    newTags.push(...quickInfo.tags.filter((t, i) => i > lastParamTagIdx));
+  quickInfo.tags = newTags;
+}
+function findJsDocParamTagByName(tags, name) {
+  const foundTag = tags.find(
+    ({ tag }) => tag.text?.some(
+      (textPart) => textPart.kind === "parameterName" && textPart.text.toLowerCase() === name.toLowerCase()
+    )
+  );
+  return foundTag ?? null;
+}
+function defaultParamJSDocTag(name) {
+  return {
+    name: "param",
+    text: [
+      {
+        kind: "parameterName",
+        text: name
+      }
+    ]
+  };
+}
+function createMarkdownDisplayPart(mdText) {
+  return {
+    text: mdText,
+    kind: "markdown"
+  };
+}
+function addParamTagInfo(oldTag, typeInfo) {
+  const newTag = JSON.parse(JSON.stringify(oldTag));
+  if (!typeInfo?.docComment) return newTag;
+  if (!newTag.text) newTag.text = [];
+  newTag.text.push(
+    createMarkdownDisplayPart(
+      typeInfo.docComment?.map((line, i) => i > 0 ? line = "> " + line : line).join("\n")
+    )
+  );
+  return newTag;
 }
 function addDocComment(ts, param) {
   for (const node of param.entries) {
@@ -17,21 +63,6 @@ function addDocComment(ts, param) {
     if (!sourceFile) continue;
     param.docComment = extractJSDocsFromNode(ts, nodeWithDocs, sourceFile);
   }
-}
-function createMarkdown(typeInfo) {
-  const paramBlocks = typeInfo.unionParams.map((pi) => paramMarkdown(pi));
-  return `
-
----
-### 🌟 Parameter-Details
-${paramBlocks.join("\n")}
-`;
-}
-function paramMarkdown(info) {
-  const docs = info.docComment?.join("\n") ?? "";
-  return `
-#### ${numberEmoji(info.i + 1)} ${info.name}: _${info.value}_
-${docs}`;
 }
 function extractJSDocsFromNode(ts, node, sourceFile) {
   const sourceText = sourceFile.getFullText();
@@ -58,12 +89,7 @@ function getLeadingComment(ts, text, pos) {
 }
 function prepareJSDocText(rawComment) {
   return rawComment.replace("/**", "").replace("*/", "").split("\n").map((line) => line.trim().replace(/^\* ?/, "")).map((line) => line.replace(/@(\w+)/g, (_, tag) => `
-**@${tag}**`));
-}
-const numEmjs = ["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"];
-function numberEmoji(num) {
-  if (num === 10) return "🔟";
-  return [...String(num)].map((char) => numEmjs[parseInt(char, 10)]);
+> _@${tag}_`));
 }
 class TypeInfo {
   constructor(unionParams) {
@@ -250,7 +276,7 @@ class UnionTypeDocsPlugin {
     if (!quickInfo) return quickInfo;
     const typeInfo = this.typeInfoFactory.create(fileName, pos);
     if (!typeInfo) return quickInfo;
-    addExtraDocs(this.ts, quickInfo, typeInfo);
+    addExtraJSDocTagInfo(this.ts, quickInfo, typeInfo);
     return quickInfo;
   }
   getCompletionsAtPosition(fileName, pos, opts, fmt) {

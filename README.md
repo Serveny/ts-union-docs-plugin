@@ -56,7 +56,7 @@ For the plugin to work you need to select the typescript from your workspace.
 
 After updating your `tsconfig.json`, you **must restart your TS Server**.
 
-**For VS Code:** Open VS Code Command Palette (`Cmd+Shift+P` or `Ctrl+Shift+P`) and run the **"TypeScript: Restart TS server"** command.
+**For VS Code:** Open VS Code Command Palette (`Cmd+Shift+P` or `Ctrl+Shift+P`) and run the `TypeScript: Restart TS server` command.
 
 ## 📋 Features
 
