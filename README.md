@@ -6,64 +6,32 @@ A TypeScript Language Service plugin that displays JSDoc comments from union typ
 	<img width="700" height="393" alt="image" src="https://github.com/user-attachments/assets/e79d79e7-173a-4399-aad5-99ebc1ec2c27" />
 </p>
 
-## 💡 The Problem
+### 💡 The Problem
 
 By default, when you use a value from a union type, TypeScript's quick info just shows the literal value or the base union type. Documentation associated with that specific member of the union is ignored.
 
-**Given this code:**
-
-```typescript
-type Color =
-	/**
-	 * Primary color
-	 */
-	| 'red'
-	
-	/**
-	 * Secondary color
-	 */
-	| 'green'
-	
-	/**
-	 * Third color
-	 * 
-	 * I'm blue da ba dee
-	 */
-	| 'blue';
-
-
-/**
- * Log color function
- */
-function logColor(color: Color): void {
-	// ...
-}
-
-// When you hover over 'logColor' in the line below...
-logColor('green');
-```
-
-**Before this plugin**, hovering over the function just shows the documentation of the function itself, not of the paramter union value.
-
-## ✨ The Solution
+### ✨ The Solution
 
 This plugin resolves the union member back to its original definition, pulling its JSDoc documentation directly into the tooltip.
 
-**After installing this plugin**, hovering over `'logColor'` now shows its full documentation.
+**After installing this plugin**, hovering over a function now shows its full documentation.
 
 ## 🚀 Get Started
 
 ### 1\. Installation
 
-Install the plugin as a development dependency using npm:
+Install typescript and the plugin as a development dependency in your project (in this example by npm):
 
 ```bash
-npm install --save-dev github:serveny/ts-union-type-docs-plugin
+npm install --save-dev typescript github:serveny/ts-union-type-docs-plugin
 ```
 
 ### 2\. Configuration
 
 Enable the plugin in your `tsconfig.json` file:
+
+> [!IMPORTANT]  
+> The plugins list must be defined inside `compilerOptions`, because it's a **Language Service Plugin**
 
 ```json
 {
@@ -78,9 +46,17 @@ Enable the plugin in your `tsconfig.json` file:
 }
 ```
 
-### 3\. Restart VS Code
+### 3\. Select workspace typescript version
 
-After updating your `tsconfig.json`, you **must restart your TS Server**. The easiest way is to open the VS Code Command Palette (`Cmd+Shift+P` or `Ctrl+Shift+P`) and run the **"TypeScript: Restart TS server"** command.
+For the plugin to work you need to select the typescript from your workspace.
+
+**For VS Code:** Open any TS file, then open VS Code Command Palette (`Cmd+Shift+P` or `Ctrl+Shift+P`), run the **"TypeScript: Select Typescript version..."** command and select `Use workspace version`.
+
+### 4\. Restart TS server (or IDE)
+
+After updating your `tsconfig.json`, you **must restart your TS Server**.
+
+**For VS Code:** Open VS Code Command Palette (`Cmd+Shift+P` or `Ctrl+Shift+P`) and run the **"TypeScript: Restart TS server"** command.
 
 ## 📋 Features
 
@@ -88,6 +64,7 @@ After updating your `tsconfig.json`, you **must restart your TS Server**. The ea
 
 ## 🗺️ Roadmap
 
+- **Deprecation warnings** for union type entries
 - **Variable Declarations:** When hovering over a `const` or `let` that is assigned a union member.
 - **Dynamic Type Suggestions:** Provide intelligent suggestions for template literal types (e.g., typing `group${number}` would suggest `group0`, `group1`, etc.).
 
