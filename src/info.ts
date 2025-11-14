@@ -99,6 +99,9 @@ export class TypeInfoFactory {
 		const ts = this.ts,
 			checker = this.checker;
 
+		//const text = node.getFullText();
+		//console.log(text);
+
 		if (
 			ts.isUnionTypeNode(node) ||
 			ts.isIntersectionTypeNode(node) ||
@@ -197,6 +200,10 @@ export class TypeInfoFactory {
 			return [];
 		}
 
+		if (ts.isTemplateLiteralTypeNode(node)) {
+			return this.buildTemplateLiteralNode(node);
+		}
+
 		if (ts.isLiteralTypeNode(node) || ts.isTypeNode(node)) {
 			return [node];
 		}
@@ -248,5 +255,38 @@ export class TypeInfoFactory {
 			return true;
 
 		return false;
+	}
+
+	// Creates new literal nodes with every possible content
+	private buildTemplateLiteralNode(
+		node: TS.TemplateLiteralTypeNode
+	): TS.TypeNode[] {
+		const results: TS.TypeNode[] = [];
+
+		// Static part (i.e. "[Channel")
+		const headText = node.head.text;
+
+		// Dynamic parts
+		for (const span of node.templateSpans) {
+			const innerTypeNodes = this.collectUnionMemberNodes(span.type);
+			for (const tn of innerTypeNodes) {
+				if (
+					this.ts.isLiteralTypeNode(tn) &&
+					(this.ts.isStringLiteral(tn.literal) ||
+						this.ts.isNumericLiteral(tn.literal))
+				) {
+					const fullValue = headText + tn.literal.text + span.literal.text;
+					const literalNode = this.ts.factory.createLiteralTypeNode(
+						this.ts.factory.createStringLiteral(fullValue)
+					);
+
+					(literalNode as any).original = tn;
+					results.push(literalNode);
+				} else {
+					results.push(...this.collectUnionMemberNodes(tn));
+				}
+			}
+		}
+		return results;
 	}
 }

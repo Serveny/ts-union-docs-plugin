@@ -24,4 +24,5 @@ export declare class TypeInfoFactory {
     private getValue;
     private collectUnionMemberNodes;
     private cmp;
+    private buildTemplateLiteralNode;
 }
