@@ -105,14 +105,29 @@ function addParamTagInfo(
 }
 
 function addDocComment(ts: typeof TS, param: UnionParameterInfo) {
-	for (const node of param.entries) {
-		// If the node was resolved, get the original node
-		const nodeWithDocs = (node as any).original ?? node;
-		const sourceFile = nodeWithDocs.getSourceFile();
-		if (!sourceFile) continue;
+	const visited = new Set();
+	const comments: string[][] = [];
 
-		param.docComment = extractJSDocsFromNode(ts, nodeWithDocs, sourceFile);
+	// Read out all comments
+	for (const entryNode of param.entries) {
+		if (visited.has((entryNode as any).id)) continue;
+		visited.add((entryNode as any).id);
+		comments.push(extractJSDocsFromNode(ts, entryNode));
+
+		let parent = entryNode.callParent;
+		while (parent != null) {
+			if (!visited.has((parent as any).id)) {
+				comments.push(extractJSDocsFromNode(ts, parent));
+				visited.add((parent as any).id);
+			}
+			parent = parent.callParent;
+		}
 	}
+
+	// Add the comments in order parent -> ... -> child
+	const lines = comments.reverse().flat();
+	if (!param.docComment) param.docComment = lines;
+	else param.docComment.push(...lines);
 }
 
 function createMarkdown(typeInfo: TypeInfo) {
@@ -132,11 +147,11 @@ function paramMarkdown(info: UnionParameterInfo): string {
 	}\`\n${docs}`;
 }
 
-function extractJSDocsFromNode(
-	ts: typeof TS,
-	node: TS.Node,
-	sourceFile: TS.SourceFile
-): string[] {
+function extractJSDocsFromNode(ts: typeof TS, node: TS.Node): string[] {
+	// If the node was resolved, get the original node
+	node = (node as any).original ?? node;
+	const sourceFile = node.getSourceFile();
+	if (!sourceFile) return [];
 	const sourceText = sourceFile.getFullText();
 	const start = node.getStart();
 	const comment = getLeadingComment(ts, sourceText, start);

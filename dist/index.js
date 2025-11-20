@@ -57,14 +57,29 @@ function addParamTagInfo(oldTag, typeInfo) {
   return newTag;
 }
 function addDocComment(ts, param) {
-  for (const node of param.entries) {
-    const nodeWithDocs = node.original ?? node;
-    const sourceFile = nodeWithDocs.getSourceFile();
-    if (!sourceFile) continue;
-    param.docComment = extractJSDocsFromNode(ts, nodeWithDocs, sourceFile);
+  const visited = /* @__PURE__ */ new Set();
+  const comments = [];
+  for (const entryNode of param.entries) {
+    if (visited.has(entryNode.id)) continue;
+    visited.add(entryNode.id);
+    comments.push(extractJSDocsFromNode(ts, entryNode));
+    let parent = entryNode.callParent;
+    while (parent != null) {
+      if (!visited.has(parent.id)) {
+        comments.push(extractJSDocsFromNode(ts, parent));
+        visited.add(parent.id);
+      }
+      parent = parent.callParent;
+    }
   }
+  const lines = comments.reverse().flat();
+  if (!param.docComment) param.docComment = lines;
+  else param.docComment.push(...lines);
 }
-function extractJSDocsFromNode(ts, node, sourceFile) {
+function extractJSDocsFromNode(ts, node) {
+  node = node.original ?? node;
+  const sourceFile = node.getSourceFile();
+  if (!sourceFile) return [];
   const sourceText = sourceFile.getFullText();
   const start = node.getStart();
   const comment = getLeadingComment(ts, sourceText, start);
@@ -160,37 +175,38 @@ class TypeInfoFactory {
   getValue(expr) {
     return this.ts.isLiteralExpression(expr) ? expr.text : expr.getText();
   }
-  collectUnionMemberNodes(node) {
+  collectUnionMemberNodes(node, callParent) {
     const ts = this.ts, checker = this.checker;
     if (ts.isUnionTypeNode(node) || ts.isIntersectionTypeNode(node) || ts.isHeritageClause(node)) {
-      return node.types.map((tn) => this.collectUnionMemberNodes(tn)).flat();
+      return node.types.map((tn) => this.collectUnionMemberNodes(tn, node)).flat();
     }
     if (ts.isConditionalTypeNode(node)) {
       return [
-        ...this.collectUnionMemberNodes(node.checkType),
-        ...this.collectUnionMemberNodes(node.extendsType),
-        ...this.collectUnionMemberNodes(node.trueType),
-        ...this.collectUnionMemberNodes(node.falseType)
+        ...this.collectUnionMemberNodes(node.checkType, node),
+        ...this.collectUnionMemberNodes(node.extendsType, node),
+        ...this.collectUnionMemberNodes(node.trueType, node),
+        ...this.collectUnionMemberNodes(node.falseType, node)
       ];
     }
     if (ts.isIndexedAccessTypeNode(node)) {
       return [
-        ...this.collectUnionMemberNodes(node.objectType),
-        ...this.collectUnionMemberNodes(node.indexType)
+        ...this.collectUnionMemberNodes(node.objectType, node),
+        ...this.collectUnionMemberNodes(node.indexType, node)
       ];
     }
     if (ts.isTypeLiteralNode(node)) {
       return node.members.map(
-        (m) => m.type ? this.collectUnionMemberNodes(m.type) : []
+        (m) => m.type ? this.collectUnionMemberNodes(m.type, node) : []
       ).flat();
     }
     if (ts.isMappedTypeNode(node)) {
       const results = [];
       if (node.typeParameter.constraint)
         results.push(
-          ...this.collectUnionMemberNodes(node.typeParameter.constraint)
+          ...this.collectUnionMemberNodes(node.typeParameter.constraint, node)
         );
-      if (node.type) results.push(...this.collectUnionMemberNodes(node.type));
+      if (node.type)
+        results.push(...this.collectUnionMemberNodes(node.type, node));
       return results;
     }
     if (ts.isTypeReferenceNode(node)) {
@@ -201,7 +217,7 @@ class TypeInfoFactory {
       if (!decl) return [];
       const tn = ts.isTypeParameterDeclaration(decl) ? decl.constraint ?? null : ts.isTypeAliasDeclaration(decl) ? decl.type : null;
       if (!tn) return [];
-      return this.collectUnionMemberNodes(tn);
+      return this.collectUnionMemberNodes(tn, node);
     }
     if (ts.isTypeOperatorNode(node)) {
       if (node.operator === ts.SyntaxKind.KeyOfKeyword) {
@@ -212,24 +228,27 @@ class TypeInfoFactory {
             ts.factory.createStringLiteral(p.getName())
           );
           node2.original = decl;
+          node2.callParent = callParent;
           return node2;
         });
       }
     }
     if (ts.isParenthesizedTypeNode(node)) {
-      return this.collectUnionMemberNodes(node.type);
+      return this.collectUnionMemberNodes(node.type, node);
     }
     if (ts.isArrayTypeNode(node)) {
-      return this.collectUnionMemberNodes(node.elementType);
+      return this.collectUnionMemberNodes(node.elementType, node);
     }
     if (ts.isTupleTypeNode(node)) {
-      return node.elements.map((el) => this.collectUnionMemberNodes(el)).flat();
+      return node.elements.map((el) => this.collectUnionMemberNodes(el, node)).flat();
     }
     if (ts.isTypeQueryNode(node)) {
       const symbol = checker.getSymbolAtLocation(node.exprName);
       if (symbol) {
         const decls = symbol.getDeclarations() ?? [];
-        return decls.flatMap((d) => this.collectUnionMemberNodes(d));
+        return decls.flatMap(
+          (d) => this.collectUnionMemberNodes(d, node)
+        );
       }
       return [];
     }
@@ -237,6 +256,7 @@ class TypeInfoFactory {
       return this.buildTemplateLiteralNode(node);
     }
     if (ts.isLiteralTypeNode(node) || ts.isTypeNode(node)) {
+      node.callParent = callParent;
       return [node];
     }
     return [];
@@ -264,7 +284,7 @@ class TypeInfoFactory {
     const results = [];
     const headText = node.head.text;
     for (const span of node.templateSpans) {
-      const innerTypeNodes = this.collectUnionMemberNodes(span.type);
+      const innerTypeNodes = this.collectUnionMemberNodes(span.type, node);
       for (const tn of innerTypeNodes) {
         if (this.ts.isLiteralTypeNode(tn) && (this.ts.isStringLiteral(tn.literal) || this.ts.isNumericLiteral(tn.literal))) {
           const fullValue = headText + tn.literal.text + span.literal.text;
@@ -272,9 +292,10 @@ class TypeInfoFactory {
             this.ts.factory.createStringLiteral(fullValue)
           );
           literalNode.original = tn;
+          literalNode.callParent = node;
           results.push(literalNode);
         } else {
-          results.push(...this.collectUnionMemberNodes(tn));
+          results.push(...this.collectUnionMemberNodes(tn, node));
         }
       }
     }

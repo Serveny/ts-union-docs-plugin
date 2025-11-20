@@ -6,10 +6,13 @@ export declare class TypeInfo {
 export declare class UnionParameterInfo {
     i: number;
     name: string;
-    entries: TS.TypeNode[];
+    entries: CalledNode[];
     value?: string | undefined;
     docComment?: string[] | undefined;
-    constructor(i: number, name: string, entries: TS.TypeNode[], value?: string | undefined, docComment?: string[] | undefined);
+    constructor(i: number, name: string, entries: CalledNode[], value?: string | undefined, docComment?: string[] | undefined);
+}
+export interface CalledNode extends TS.TypeNode {
+    callParent?: CalledNode;
 }
 export declare class TypeInfoFactory {
     private ts;
