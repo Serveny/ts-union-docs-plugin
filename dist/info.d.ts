@@ -13,6 +13,7 @@ export declare class UnionParameterInfo {
 }
 export interface CalledNode extends TS.TypeNode {
     callParent?: CalledNode;
+    isRegexPattern?: boolean;
 }
 export declare class TypeInfoFactory {
     private ts;

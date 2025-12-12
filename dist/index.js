@@ -274,28 +274,39 @@ class TypeInfoFactory {
   }
   // Creates new literal nodes with every possible content
   buildTemplateLiteralNode(node) {
-    const results = [];
-    const headText = node.head.text;
+    const headText = escapeRegExp(node.head.text), ts = this.ts;
+    let regexPattern = headText;
     for (const span of node.templateSpans) {
       const innerTypeNodes = this.collectUnionMemberNodes(span.type, node);
+      const spanPatterns = [];
       for (const tn of innerTypeNodes) {
-        if (this.ts.isLiteralTypeNode(tn) && (this.ts.isStringLiteral(tn.literal) || this.ts.isNumericLiteral(tn.literal))) {
-          const fullValue = headText + tn.literal.text + span.literal.text;
-          const literalNode = this.ts.factory.createLiteralTypeNode(
-            this.ts.factory.createStringLiteral(fullValue)
-          );
-          literalNode.original = tn;
-          literalNode.callParent = node;
-          results.push(literalNode);
-        } else {
-          results.push(...this.collectUnionMemberNodes(tn, node));
-        }
+        if (ts.isLiteralTypeNode(tn) && (this.ts.isStringLiteral(tn.literal) || this.ts.isNumericLiteral(tn.literal)))
+          spanPatterns.push(escapeRegExp(String(tn.literal.text)));
+        else if (tn.kind === ts.SyntaxKind.NumberKeyword)
+          spanPatterns.push("\\d+(\\.\\d+)?");
+        else if (tn.kind === ts.SyntaxKind.BooleanKeyword)
+          spanPatterns.push("(true|false)");
+        else if (tn.kind === ts.SyntaxKind.StringKeyword)
+          spanPatterns.push(".*");
+        else spanPatterns.push(".*");
       }
+      const spanRegex = spanPatterns.length > 1 ? `(${spanPatterns.join("|")})` : spanPatterns[0];
+      regexPattern += spanRegex + escapeRegExp(span.literal.text);
     }
-    return results;
+    const finalRegex = `^${regexPattern}$`;
+    const literalNode = ts.factory.createStringLiteral(
+      finalRegex
+    );
+    literalNode.isRegexPattern = true;
+    literalNode.callParent = node;
+    return [literalNode];
   }
   cmp(expr, node) {
     const ts = this.ts;
+    if (isRegexPattern(node) && ts.isStringLiteral(expr)) {
+      const pattern = new RegExp(node.text);
+      return pattern.test(expr.text);
+    }
     if (!ts.isLiteralTypeNode(node)) return false;
     const typeLiteral = node.literal;
     if (ts.isStringLiteral(expr) && ts.isStringLiteral(typeLiteral))
@@ -312,6 +323,12 @@ class TypeInfoFactory {
       return true;
     return false;
   }
+}
+function isRegexPattern(node) {
+  return node.isRegexPattern === true;
+}
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 class UnionTypeDocsPlugin {
   constructor(ts) {
