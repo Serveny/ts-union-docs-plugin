@@ -84,7 +84,7 @@ The easiest way to test your changes is to run a debug instance of VS Code that 
    This command builds the plugin and installs it in example project every time a file inside the plugin project was changed.
 
    ```bash
-   npm run refresh-watch
+   npm run watch-and-refresh
    ```
 
 2. **Start the example project with debugging enabled:**

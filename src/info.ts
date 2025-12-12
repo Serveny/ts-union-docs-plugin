@@ -112,7 +112,7 @@ export class TypeInfoFactory {
 			ts.isHeritageClause(node) // e.g. Class1 extends BaseClass implements Interface1
 		) {
 			return node.types
-				.map((tn) => this.collectUnionMemberNodes(tn, node))
+				.map((tn) => this.collectUnionMemberNodes(tn, callParent))
 				.flat();
 		}
 
@@ -324,7 +324,7 @@ export class TypeInfoFactory {
 		literalNode.isRegexPattern = true;
 		literalNode.callParent = node;
 
-		return [literalNode];
+		return [node, literalNode];
 	}
 
 	private cmp(expr: TS.Expression, node: CalledNode): boolean {

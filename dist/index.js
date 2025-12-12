@@ -180,7 +180,7 @@ class TypeInfoFactory {
     if (ts.isUnionTypeNode(node) || // e.g. string | number
     ts.isIntersectionTypeNode(node) || // e.g. Class1 & Class2
     ts.isHeritageClause(node)) {
-      return node.types.map((tn) => this.collectUnionMemberNodes(tn, node)).flat();
+      return node.types.map((tn) => this.collectUnionMemberNodes(tn, callParent)).flat();
     }
     if (ts.isConditionalTypeNode(node))
       return this.collectConditionalTypeNode(node);
@@ -299,7 +299,7 @@ class TypeInfoFactory {
     );
     literalNode.isRegexPattern = true;
     literalNode.callParent = node;
-    return [literalNode];
+    return [node, literalNode];
   }
   cmp(expr, node) {
     const ts = this.ts;

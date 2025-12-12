@@ -167,16 +167,22 @@ function getLeadingComment(
 	pos: number
 ): TS.CommentRange | undefined {
 	const comments = ts.getLeadingCommentRanges(text, pos) ?? [];
+
 	// jsdoc comment (has to start with /**)
 	if (comments.length > 0 && text[comments[0].pos + 2] === '*')
 		return comments[comments.length - 1];
+
 	text = text.substring(0, pos);
 	const commentStart = text.lastIndexOf('/**');
 	if (commentStart === -1) return;
+
 	const commentEnd = text.lastIndexOf('*/');
 	if (commentEnd === -1) return;
+
+	// only spaces, tabs or linebreaks allowed between comment and node
 	const textBetween = text.substring(commentEnd + 2, pos);
 	if (/[^ \t|\n]/.test(textBetween)) return;
+
 	return {
 		pos: commentStart + 3,
 		end: commentEnd,
