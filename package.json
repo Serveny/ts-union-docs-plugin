@@ -1,5 +1,5 @@
 {
-    "name": "ts-union-type-docs-plugin",
+    "name": "ts-union-docs-plugin",
     "version": "0.1.0",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
