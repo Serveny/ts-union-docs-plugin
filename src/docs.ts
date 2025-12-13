@@ -21,14 +21,17 @@ export function addExtraJSDocTagInfo(
 			?.map((tag, idx) => ({ tag, idx }))
 			.filter((ti) => ti.tag.name === 'param') ?? [];
 
+	// Create new tag list to prevent tags stacking up over time in quick info
 	const newTags = [
 		...(tagIdxs.length > 0
-			? quickInfo.tags.filter((t, i) => i < tagIdxs[0].idx)
+			? quickInfo.tags.filter((_, i) => i < tagIdxs[0].idx)
 			: quickInfo.tags),
 	];
 
 	for (const paramInfo of typeInfo.unionParams) {
 		const jsDocTag = findJsDocParamTagByName(tagIdxs, paramInfo.name);
+
+		// If no js doc comment for param found, fill with default
 		const newTag = addParamTagInfo(
 			jsDocTag?.tag ?? defaultParamJSDocTag(paramInfo.name),
 			paramInfo
@@ -36,10 +39,11 @@ export function addExtraJSDocTagInfo(
 		newTags.push(newTag);
 	}
 
+	// If tags after last param tag left, add them to new tag list
 	const lastParamTagIdx =
 		tagIdxs.length === 0 ? 0 : tagIdxs[tagIdxs.length - 1]?.idx ?? 0;
 	if (quickInfo.tags.length - 1 > lastParamTagIdx)
-		newTags.push(...quickInfo.tags.filter((t, i) => i > lastParamTagIdx));
+		newTags.push(...quickInfo.tags.filter((_, i) => i > lastParamTagIdx));
 
 	quickInfo.tags = newTags;
 }

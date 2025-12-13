@@ -5,7 +5,7 @@ function addExtraJSDocTagInfo(ts, quickInfo, typeInfo) {
   if (!quickInfo.tags) quickInfo.tags = [];
   const tagIdxs = quickInfo.tags?.map((tag, idx) => ({ tag, idx })).filter((ti) => ti.tag.name === "param") ?? [];
   const newTags = [
-    ...tagIdxs.length > 0 ? quickInfo.tags.filter((t, i) => i < tagIdxs[0].idx) : quickInfo.tags
+    ...tagIdxs.length > 0 ? quickInfo.tags.filter((_, i) => i < tagIdxs[0].idx) : quickInfo.tags
   ];
   for (const paramInfo of typeInfo.unionParams) {
     const jsDocTag = findJsDocParamTagByName(tagIdxs, paramInfo.name);
@@ -17,7 +17,7 @@ function addExtraJSDocTagInfo(ts, quickInfo, typeInfo) {
   }
   const lastParamTagIdx = tagIdxs.length === 0 ? 0 : tagIdxs[tagIdxs.length - 1]?.idx ?? 0;
   if (quickInfo.tags.length - 1 > lastParamTagIdx)
-    newTags.push(...quickInfo.tags.filter((t, i) => i > lastParamTagIdx));
+    newTags.push(...quickInfo.tags.filter((_, i) => i > lastParamTagIdx));
   quickInfo.tags = newTags;
 }
 function findJsDocParamTagByName(tags, name) {

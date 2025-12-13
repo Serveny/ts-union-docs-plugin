@@ -9,6 +9,8 @@
     "alwaysStrict": true,
     "strictNullChecks": true,
     "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
   },
   "include": [
     "src"
