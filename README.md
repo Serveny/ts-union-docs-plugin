@@ -23,7 +23,7 @@ This plugin resolves the union member back to its original definition, pulling i
 Install typescript and the plugin as a development dependency in your project (in this example by npm):
 
 ```bash
-npm install --save-dev typescript github:serveny/ts-union-type-docs-plugin
+npm install --save-dev typescript github:serveny/ts-union-docs-plugin
 ```
 
 ### 2\. Configuration
@@ -39,7 +39,7 @@ Enable the plugin in your `tsconfig.json` file:
 		// ... your other options
 		"plugins": [
 			{
-				"name": "ts-union-type-docs-plugin"
+				"name": "ts-union-docs-plugin"
 			}
 		]
 	}
@@ -77,7 +77,7 @@ Interested in helping build this plugin? We'd love to have you\!
 The easiest way to test your changes is to run a debug instance of VS Code that loads your local plugin code. The commands search the example project under `../example` (outside of plugin project folder)
 
 > [!IMPORTANT]  
-> The project to be debugged must be located outside the ts-union-type-docs-plugin folder. It wont work otherwise. If you want to use the example project, you must copy or move it out of the folder.
+> The project to be debugged must be located outside the ts-union-docs-plugin folder. It wont work otherwise. If you want to use the example project, you must copy or move it out of the folder.
 
 1. **Start watcher in plugin project folder:**
 

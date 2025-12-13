@@ -4,7 +4,7 @@
     "module": "ESNext",
     "plugins": [
       {
-        "name": "ts-union-type-docs-plugin"
+        "name": "ts-union-docs-plugin"
       }
     ]
   },

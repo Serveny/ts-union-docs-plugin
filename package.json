@@ -1,6 +1,7 @@
 {
     "name": "ts-union-docs-plugin",
     "version": "0.1.0",
+    "publisher": "Serveny",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
     "files": [
@@ -10,7 +11,7 @@
     "prepublishOnly": "npm run build",
     "repository": {
         "type": "git",
-        "url": "https://github.com/Serveny/ts-union-type-docs-plugin"
+        "url": "https://github.com/Serveny/ts-union-docs-plugin"
     },
     "devDependencies": {
         "@types/node": "25.0.1",
