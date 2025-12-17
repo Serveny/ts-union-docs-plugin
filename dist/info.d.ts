@@ -1,15 +1,14 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
-export declare class TypeInfo {
-    unionParams: UnionParameterInfo[];
-    constructor(unionParams: UnionParameterInfo[]);
+export declare enum SupportedType {
+    Paramter = 0
 }
-export declare class UnionParameterInfo {
-    i: number;
+export declare class UnionInfo {
+    type: SupportedType;
     name: string;
     entries: CalledNode[];
     value?: string | undefined;
     docComment?: string[] | undefined;
-    constructor(i: number, name: string, entries: CalledNode[], value?: string | undefined, docComment?: string[] | undefined);
+    constructor(type: SupportedType, name: string, entries: CalledNode[], value?: string | undefined, docComment?: string[] | undefined);
 }
 export interface CalledNode extends TS.TypeNode {
     callParent?: CalledNode;
@@ -20,11 +19,11 @@ export declare class TypeInfoFactory {
     private ls;
     private checker;
     constructor(ts: typeof TS, ls: TS.LanguageService);
-    create(fileName: string, position: number): TypeInfo | null;
+    create(fileName: string, position: number): UnionInfo[] | null;
     private findNodeAtPos;
     private getCallExpression;
-    private getUnionParamters;
-    private getUnionParamInfo;
+    private getUnionParamtersInfo;
+    private getUnionInfo;
     private getValue;
     private collectUnionMemberNodes;
     private collectConditionalTypeNode;

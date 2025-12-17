@@ -1,19 +1,21 @@
 "use strict";
-function addExtraJSDocTagInfo(ts, quickInfo, typeInfo) {
-  if (typeInfo.unionParams.length === 0) return;
-  typeInfo.unionParams.forEach((p) => addDocComment(ts, p));
+function addExtraJSDocTagInfo(ts, quickInfo, typesInfo) {
+  if (typesInfo.length === 0) return;
+  typesInfo.forEach((p) => addDocComment(ts, p));
   if (!quickInfo.tags) quickInfo.tags = [];
   const tagIdxs = quickInfo.tags?.map((tag, idx) => ({ tag, idx })).filter((ti) => ti.tag.name === "param") ?? [];
   const newTags = [
     ...tagIdxs.length > 0 ? quickInfo.tags.filter((_, i) => i < tagIdxs[0].idx) : quickInfo.tags
   ];
-  for (const paramInfo of typeInfo.unionParams) {
+  for (const paramInfo of typesInfo) {
     const jsDocTag = findJsDocParamTagByName(tagIdxs, paramInfo.name);
-    const newTag = addParamTagInfo(
-      jsDocTag?.tag ?? defaultParamJSDocTag(paramInfo.name),
-      paramInfo
-    );
-    newTags.push(newTag);
+    if ((paramInfo.docComment?.length ?? 0) > 0) {
+      const newTag = addParamTagInfo(
+        jsDocTag?.tag ?? defaultParamJSDocTag(paramInfo.name),
+        paramInfo
+      );
+      newTags.push(newTag);
+    }
   }
   const lastParamTagIdx = tagIdxs.length === 0 ? 0 : tagIdxs[tagIdxs.length - 1]?.idx ?? 0;
   if (quickInfo.tags.length - 1 > lastParamTagIdx)
@@ -106,14 +108,9 @@ function prepareJSDocText(rawComment) {
   return rawComment.replace("/**", "").replace("*/", "").split("\n").map((line) => line.trim().replace(/^\* ?/, "")).map((line) => line.replace(/@(\w+)/g, (_, tag) => `
 > _@${tag}_`));
 }
-class TypeInfo {
-  constructor(unionParams) {
-    this.unionParams = unionParams;
-  }
-}
-class UnionParameterInfo {
-  constructor(i, name, entries, value, docComment) {
-    this.i = i;
+class UnionInfo {
+  constructor(type, name, entries, value, docComment) {
+    this.type = type;
     this.name = name;
     this.entries = entries;
     this.value = value;
@@ -137,10 +134,8 @@ class TypeInfoFactory {
     const symbol = this.checker.getSymbolAtLocation(node);
     if (!symbol) return null;
     const callExpression = this.getCallExpression(node);
-    if (!callExpression) return null;
-    const unionParams = this.getUnionParamters(callExpression);
-    if (unionParams.length === 0) return null;
-    return new TypeInfo(unionParams);
+    if (callExpression) return this.getUnionParamtersInfo(callExpression);
+    return null;
   }
   findNodeAtPos(srcFile, pos) {
     const find = (node) => pos >= node.getStart() && pos < node.getEnd() ? this.ts.forEachChild(node, find) || node : null;
@@ -151,26 +146,31 @@ class TypeInfoFactory {
     while (node && !this.ts.isCallExpression(node)) node = node.parent;
     return node;
   }
-  getUnionParamters(callExpr) {
+  getUnionParamtersInfo(callExpr) {
     const paramTypes = [];
     const signature = this.checker.getResolvedSignature(callExpr);
     if (!signature) return paramTypes;
     const args = callExpr.arguments;
     const params = signature.getParameters();
     for (let i = 0; i < params.length; i++) {
-      const paramInfo = this.getUnionParamInfo(i, params[i], args[i]);
+      const paramInfo = this.getUnionInfo(params[i], args[i]);
       if (paramInfo) paramTypes.push(paramInfo);
     }
     return paramTypes;
   }
-  getUnionParamInfo(i, paramSymbol, arg) {
+  getUnionInfo(paramSymbol, arg) {
     const decl = paramSymbol.valueDeclaration;
     if (!decl || !this.ts.isParameter(decl) || !decl.type) return null;
     const unionMemberNodes = this.collectUnionMemberNodes(decl.type);
     if (unionMemberNodes.length === 0) return null;
     const value = this.getValue(arg);
     const valueNodes = unionMemberNodes.filter((entry) => this.cmp(arg, entry));
-    return new UnionParameterInfo(i, paramSymbol.name, valueNodes, value);
+    return new UnionInfo(
+      0,
+      paramSymbol.name,
+      valueNodes,
+      value
+    );
   }
   getValue(expr) {
     return this.ts.isLiteralExpression(expr) ? expr.text : expr.getText();

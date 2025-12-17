@@ -1,13 +1,13 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
 
-// This class holds every type information the plugin needs
-export class TypeInfo {
-	constructor(public unionParams: UnionParameterInfo[]) {}
+export enum SupportedType {
+	Paramter,
 }
 
-export class UnionParameterInfo {
+// This class holds every type information the plugin needs
+export class UnionInfo {
 	constructor(
-		public i: number,
+		public type: SupportedType,
 		public name: string,
 		// Can be multiple nodes because different union types can have same values
 		public entries: CalledNode[],
@@ -26,7 +26,7 @@ export class TypeInfoFactory {
 
 	constructor(private ts: typeof TS, private ls: TS.LanguageService) {}
 
-	create(fileName: string, position: number): TypeInfo | null {
+	create(fileName: string, position: number): UnionInfo[] | null {
 		const program = this.ls.getProgram();
 		if (!program) return null;
 
@@ -42,12 +42,12 @@ export class TypeInfoFactory {
 		const symbol = this.checker.getSymbolAtLocation(node);
 		if (!symbol) return null;
 
+		// Find union type parameter info for function call
 		const callExpression = this.getCallExpression(node);
-		if (!callExpression) return null;
+		if (callExpression) return this.getUnionParamtersInfo(callExpression);
 
-		const unionParams = this.getUnionParamters(callExpression);
-		if (unionParams.length === 0) return null;
-		return new TypeInfo(unionParams);
+		// TODO: Find union type info for variable
+		return null;
 	}
 
 	private findNodeAtPos(srcFile: TS.SourceFile, pos: number): TS.Node | null {
@@ -64,26 +64,25 @@ export class TypeInfoFactory {
 		return node;
 	}
 
-	private getUnionParamters(callExpr: TS.CallExpression): UnionParameterInfo[] {
-		const paramTypes: UnionParameterInfo[] = [];
+	private getUnionParamtersInfo(callExpr: TS.CallExpression): UnionInfo[] {
+		const paramTypes: UnionInfo[] = [];
 		const signature = this.checker.getResolvedSignature(callExpr);
 		if (!signature) return paramTypes;
 
 		const args = callExpr.arguments;
 		const params = signature.getParameters();
 		for (let i = 0; i < params.length; i++) {
-			const paramInfo = this.getUnionParamInfo(i, params[i], args[i]);
+			const paramInfo = this.getUnionInfo(params[i], args[i]);
 			if (paramInfo) paramTypes.push(paramInfo);
 		}
 
 		return paramTypes;
 	}
 
-	private getUnionParamInfo(
-		i: number,
+	private getUnionInfo(
 		paramSymbol: TS.Symbol,
 		arg: TS.Expression
-	): UnionParameterInfo | null {
+	): UnionInfo | null {
 		const decl = paramSymbol.valueDeclaration;
 		if (!decl || !this.ts.isParameter(decl) || !decl.type) return null;
 
@@ -93,7 +92,12 @@ export class TypeInfoFactory {
 		const value = this.getValue(arg);
 		const valueNodes = unionMemberNodes.filter((entry) => this.cmp(arg, entry));
 
-		return new UnionParameterInfo(i, paramSymbol.name, valueNodes, value);
+		return new UnionInfo(
+			SupportedType.Paramter,
+			paramSymbol.name,
+			valueNodes,
+			value
+		);
 	}
 
 	private getValue(expr: TS.Expression): string {

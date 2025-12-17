@@ -1,5 +1,5 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
-import { TypeInfo, UnionParameterInfo } from './info';
+import { UnionInfo } from './info';
 
 type TagIdx = {
 	tag: TS.JSDocTagInfo;
@@ -9,10 +9,10 @@ type TagIdx = {
 export function addExtraJSDocTagInfo(
 	ts: typeof TS,
 	quickInfo: TS.QuickInfo,
-	typeInfo: TypeInfo
+	typesInfo: UnionInfo[]
 ) {
-	if (typeInfo.unionParams.length === 0) return;
-	typeInfo.unionParams.forEach((p) => addDocComment(ts, p));
+	if (typesInfo.length === 0) return;
+	typesInfo.forEach((p) => addDocComment(ts, p));
 
 	if (!quickInfo.tags) quickInfo.tags = [];
 
@@ -28,15 +28,18 @@ export function addExtraJSDocTagInfo(
 			: quickInfo.tags),
 	];
 
-	for (const paramInfo of typeInfo.unionParams) {
+	for (const paramInfo of typesInfo) {
 		const jsDocTag = findJsDocParamTagByName(tagIdxs, paramInfo.name);
 
-		// If no js doc comment for param found, fill with default
-		const newTag = addParamTagInfo(
-			jsDocTag?.tag ?? defaultParamJSDocTag(paramInfo.name),
-			paramInfo
-		);
-		newTags.push(newTag);
+		// If type info found, create new quick info tag
+		if ((paramInfo.docComment?.length ?? 0) > 0) {
+			// If no js doc comment for param found, fill with default
+			const newTag = addParamTagInfo(
+				jsDocTag?.tag ?? defaultParamJSDocTag(paramInfo.name),
+				paramInfo
+			);
+			newTags.push(newTag);
+		}
 	}
 
 	// If tags after last param tag left, add them to new tag list
@@ -80,7 +83,7 @@ function createMarkdownDisplayPart(mdText: string): TS.SymbolDisplayPart {
 
 function addParamTagInfo(
 	oldTag: TS.JSDocTagInfo,
-	typeInfo: UnionParameterInfo | undefined
+	typeInfo: UnionInfo | undefined
 ): TS.JSDocTagInfo {
 	const newTag: TS.JSDocTagInfo = JSON.parse(JSON.stringify(oldTag));
 	if (!typeInfo?.docComment) return newTag;
@@ -95,7 +98,7 @@ function addParamTagInfo(
 	return newTag;
 }
 
-function addDocComment(ts: typeof TS, param: UnionParameterInfo) {
+function addDocComment(ts: typeof TS, param: UnionInfo) {
 	const visited = new Set();
 	const comments: string[][] = [];
 
