@@ -15,6 +15,7 @@ export interface CalledNode extends TS.Node {
     callParent?: CalledNode;
     original?: TS.Node;
     isRegexPattern?: boolean;
+    codeText?: string;
 }
 export declare class TypeInfoFactory {
     private ts;
@@ -36,7 +37,8 @@ export declare class TypeInfoFactory {
     private collectKeyOfKeywordTypeOperatorNode;
     private collectTupleTypeNode;
     private collectTypeQueryNode;
-    private createRegexNode;
+    private createLiteralNode;
     private buildTemplateLiteralNode;
     private cmp;
+    private cmpLit;
 }

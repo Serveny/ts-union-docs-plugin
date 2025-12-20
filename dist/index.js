@@ -177,6 +177,7 @@ class TypeInfoFactory {
   }
   collectUnionMemberNodes(node, callParent) {
     const ts = this.ts;
+    node.codeText = getNodeText(node);
     if (ts.isUnionTypeNode(node) || // e.g. string | number
     ts.isIntersectionTypeNode(node) || // e.g. Class1 & Class2
     ts.isHeritageClause(node)) {
@@ -199,7 +200,7 @@ class TypeInfoFactory {
     if (ts.isTupleTypeNode(node)) return this.collectTupleTypeNode(node);
     if (ts.isTypeQueryNode(node)) return this.collectTypeQueryNode(node);
     if (ts.isTemplateLiteralTypeNode(node))
-      return this.buildTemplateLiteralNode(node, callParent);
+      return this.buildTemplateLiteralNode(node);
     if (ts.isLiteralTypeNode(node) || // e.g. "text", 42, true
     ts.isTypeNode(node)) {
       return [calledNode(node, callParent)];
@@ -269,41 +270,81 @@ class TypeInfoFactory {
     }
     return [];
   }
-  createRegexNode(node, regex, callParent) {
-    const litNode = this.ts.factory.createStringLiteral(regex);
-    return calledNode(litNode, callParent, node, true);
+  createLiteralNode(node, text, callParent, isRegexPattern2) {
+    const litNode = this.ts.factory.createStringLiteral(text);
+    return calledNode(
+      litNode,
+      callParent,
+      node.original ?? node,
+      isRegexPattern2
+    );
   }
   // Creates new literal nodes with every possible content
-  buildTemplateLiteralNode(node, callParent) {
+  buildTemplateLiteralNode(node) {
     const headText = escapeRegExp(node.head.text), ts = this.ts;
-    let regexPattern = headText;
+    const nodes = [];
     for (const span of node.templateSpans) {
-      const spanPatterns = [];
+      const spanNodes = [];
       const innerTypeNodes = this.collectUnionMemberNodes(span.type, node);
       for (const tn of innerTypeNodes) {
         if (ts.isLiteralTypeNode(tn) && (this.ts.isStringLiteral(tn.literal) || this.ts.isNumericLiteral(tn.literal)))
-          spanPatterns.push(escapeRegExp(String(tn.literal.text)));
+          spanNodes.push(
+            this.createLiteralNode(
+              tn,
+              tn.literal.text + span.literal.text,
+              node,
+              false
+            )
+          );
         else if (tn.kind === ts.SyntaxKind.NumberKeyword)
-          spanPatterns.push("\\d+(\\.\\d+)?");
+          spanNodes.push(
+            this.createLiteralNode(
+              tn,
+              "\\d+(\\.\\d+)?" + span.literal.text,
+              node,
+              true
+            )
+          );
         else if (tn.kind === ts.SyntaxKind.BooleanKeyword)
-          spanPatterns.push("(true|false)");
+          spanNodes.push(
+            this.createLiteralNode(
+              tn,
+              "(true|false)" + span.literal.text,
+              node,
+              true
+            )
+          );
         else if (tn.kind === ts.SyntaxKind.StringKeyword)
-          spanPatterns.push(".*");
-        else spanPatterns.push(".*");
+          spanNodes.push(
+            this.createLiteralNode(tn, ".*" + span.literal.text, node, true)
+          );
+        else console.warn("Unknown type of template: ", tn);
       }
-      const spanRegex = spanPatterns.length > 1 ? `(${spanPatterns.join("|")})` : spanPatterns[0];
-      regexPattern += spanRegex + escapeRegExp(span.literal.text);
+      nodes.push(spanNodes);
     }
-    return [node, this.createRegexNode(node, regexPattern, callParent)];
+    const catProd = cartesianProduct(nodes).map((compNodes) => {
+      const isRegex = compNodes.some((n) => n.isRegexPattern === true);
+      const fullText = headText + compNodes.map((n) => n.text).join();
+      return this.createLiteralNode(
+        compNodes[0],
+        fullText,
+        compNodes[0].callParent,
+        isRegex
+      );
+    });
+    return catProd;
   }
   cmp(expr, node) {
-    const ts = this.ts;
-    if (isRegexPattern(node) && ts.isStringLiteral(expr)) {
+    if (isRegexPattern(node) && this.ts.isStringLiteral(expr)) {
       const pattern = new RegExp(`^${node.text}$`);
       return pattern.test(expr.text);
     }
-    if (!ts.isLiteralTypeNode(node)) return false;
-    const typeLiteral = node.literal;
+    if (node.isRegexPattern === false) return this.cmpLit(expr, node);
+    if (!this.ts.isLiteralTypeNode(node)) return false;
+    return this.cmpLit(expr, node.literal);
+  }
+  cmpLit(expr, typeLiteral) {
+    const ts = this.ts;
     if (ts.isStringLiteral(expr) && ts.isStringLiteral(typeLiteral))
       return expr.text === typeLiteral.text;
     if (ts.isNumericLiteral(expr) && ts.isNumericLiteral(typeLiteral))
@@ -326,11 +367,21 @@ function calledNode(node, callParent, original, isRegexPattern2) {
   cNode.isRegexPattern = isRegexPattern2;
   return cNode;
 }
+function getNodeText(node) {
+  const text = node.getSourceFile().text;
+  return text.substring(node.getStart(), node.getEnd());
+}
 function isRegexPattern(node) {
   return node.isRegexPattern === true;
 }
 function escapeRegExp(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function cartesianProduct(arrays) {
+  return arrays.reduce(
+    (acc, curr) => acc.flatMap((d) => curr.map((e) => [...d, e])),
+    [[]]
+  );
 }
 class UnionTypeDocsPlugin {
   constructor(ts) {

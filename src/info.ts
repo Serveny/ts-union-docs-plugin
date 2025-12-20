@@ -21,6 +21,7 @@ export interface CalledNode extends TS.Node {
 	callParent?: CalledNode; // The node that references to it
 	original?: TS.Node; // For resolved nodes
 	isRegexPattern?: boolean; // For template syntax like ${number}
+	codeText?: string;
 }
 
 export class TypeInfoFactory {
@@ -111,6 +112,7 @@ export class TypeInfoFactory {
 		callParent?: TS.Node
 	): CalledNode[] {
 		const ts = this.ts;
+		(node as any).codeText = getNodeText(node);
 
 		if (
 			ts.isUnionTypeNode(node) || // e.g. string | number
@@ -163,7 +165,7 @@ export class TypeInfoFactory {
 
 		// e.g. `text-${number}`
 		if (ts.isTemplateLiteralTypeNode(node))
-			return this.buildTemplateLiteralNode(node, callParent);
+			return this.buildTemplateLiteralNode(node);
 
 		// This is the end of the journey
 		if (
@@ -273,26 +275,31 @@ export class TypeInfoFactory {
 		return [];
 	}
 
-	private createRegexNode(
-		node: TS.Node,
-		regex: string,
-		callParent?: TS.Node
-	): CalledNode {
-		const litNode = this.ts.factory.createStringLiteral(regex);
-		return calledNode(litNode, callParent, node, true);
+	private createLiteralNode<T extends TS.Node>(
+		node: T,
+		text: string,
+		callParent?: TS.Node,
+		isRegexPattern?: boolean
+	): CalledNode & TS.LiteralLikeNode {
+		const litNode = this.ts.factory.createStringLiteral(text);
+		return calledNode(
+			litNode,
+			callParent,
+			(node as any).original ?? node,
+			isRegexPattern
+		);
 	}
 
 	// Creates new literal nodes with every possible content
 	private buildTemplateLiteralNode(
-		node: TS.TemplateLiteralTypeNode,
-		callParent?: TS.Node
+		node: TS.TemplateLiteralTypeNode
 	): CalledNode[] {
 		const headText = escapeRegExp(node.head.text),
 			ts = this.ts;
-		let regexPattern = headText;
+		const nodes: (CalledNode & TS.LiteralLikeNode)[][] = [];
 
 		for (const span of node.templateSpans) {
-			const spanPatterns: string[] = [];
+			const spanNodes: (CalledNode & TS.LiteralLikeNode)[] = [];
 			const innerTypeNodes = this.collectUnionMemberNodes(span.type, node);
 
 			for (const tn of innerTypeNodes) {
@@ -302,46 +309,81 @@ export class TypeInfoFactory {
 					(this.ts.isStringLiteral(tn.literal) ||
 						this.ts.isNumericLiteral(tn.literal))
 				)
-					spanPatterns.push(escapeRegExp(String(tn.literal.text)));
+					spanNodes.push(
+						this.createLiteralNode(
+							tn,
+							tn.literal.text + span.literal.text,
+							node,
+							false
+						)
+					);
 				// number
 				else if (tn.kind === ts.SyntaxKind.NumberKeyword)
-					spanPatterns.push('\\d+(\\.\\d+)?');
+					spanNodes.push(
+						this.createLiteralNode(
+							tn,
+							'\\d+(\\.\\d+)?' + span.literal.text,
+							node,
+							true
+						)
+					);
 				// boolean
 				else if (tn.kind === ts.SyntaxKind.BooleanKeyword)
-					spanPatterns.push('(true|false)');
+					spanNodes.push(
+						this.createLiteralNode(
+							tn,
+							'(true|false)' + span.literal.text,
+							node,
+							true
+						)
+					);
 				// string (caution: greedy)
 				else if (tn.kind === ts.SyntaxKind.StringKeyword)
-					spanPatterns.push('.*');
+					spanNodes.push(
+						this.createLiteralNode(tn, '.*' + span.literal.text, node, true)
+					);
 				// Fallback for unknown types
-				else spanPatterns.push('.*');
+				else console.warn('Unknown type of template: ', tn);
 			}
 
-			// For multiple possibilities, use regex union pattern
-			const spanRegex =
-				spanPatterns.length > 1
-					? `(${spanPatterns.join('|')})`
-					: spanPatterns[0];
-
-			regexPattern += spanRegex + escapeRegExp(span.literal.text);
+			nodes.push(spanNodes);
 		}
 
-		return [node, this.createRegexNode(node, regexPattern, callParent)];
+		const catProd = cartesianProduct(nodes).map((compNodes) => {
+			const isRegex = compNodes.some((n) => n.isRegexPattern === true);
+			const fullText: string = headText + compNodes.map((n) => n.text).join();
+			return this.createLiteralNode(
+				compNodes[0],
+				fullText,
+				compNodes[0].callParent,
+				isRegex
+			);
+		});
+
+		return catProd;
 	}
 
 	private cmp(expr: TS.Expression, node: CalledNode): boolean {
-		const ts = this.ts;
-
 		// check for generated regex pattern
-		if (isRegexPattern(node) && ts.isStringLiteral(expr)) {
+		if (isRegexPattern(node) && this.ts.isStringLiteral(expr)) {
 			// Surround with ^...$, so the whole string must match
 			const pattern = new RegExp(`^${node.text}$`);
 			return pattern.test(expr.text);
 		}
+		if (node.isRegexPattern === false) return this.cmpLit(expr, node as any);
+		if (!this.ts.isLiteralTypeNode(node)) return false;
+		return this.cmpLit(expr, node.literal);
+	}
 
-		if (!ts.isLiteralTypeNode(node)) return false;
-
-		const typeLiteral = node.literal;
-
+	private cmpLit(
+		expr: TS.Expression,
+		typeLiteral:
+			| TS.LiteralExpression
+			| TS.NullLiteral
+			| TS.BooleanLiteral
+			| TS.PrefixUnaryExpression
+	) {
+		const ts = this.ts;
 		// string literals (i.e. "hello" and type T = "hello")
 		if (ts.isStringLiteral(expr) && ts.isStringLiteral(typeLiteral))
 			return expr.text === typeLiteral.text;
@@ -383,17 +425,22 @@ export class TypeInfoFactory {
 	}
 }
 
-function calledNode(
-	node: TS.Node,
+function calledNode<T extends TS.Node>(
+	node: T,
 	callParent?: TS.Node,
 	original?: TS.Node,
 	isRegexPattern?: boolean
-): CalledNode {
+): CalledNode & T {
 	const cNode = node as CalledNode;
 	cNode.callParent = callParent as any;
 	cNode.original = original;
 	cNode.isRegexPattern = isRegexPattern;
-	return cNode;
+	return cNode as any;
+}
+
+function getNodeText(node: TS.Node) {
+	const text = node.getSourceFile().text;
+	return text.substring(node.getStart(), node.getEnd());
 }
 
 function isRegexPattern(
@@ -404,4 +451,11 @@ function isRegexPattern(
 
 function escapeRegExp(string: string): string {
 	return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function cartesianProduct<T>(arrays: T[][]): T[][] {
+	return arrays.reduce(
+		(acc, curr) => acc.flatMap((d) => curr.map((e) => [...d, e])),
+		[[]] as T[][]
+	);
 }
