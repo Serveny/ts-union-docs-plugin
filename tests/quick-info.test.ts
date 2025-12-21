@@ -9,7 +9,7 @@ function tagsToText(quickInfo: TS.QuickInfo) {
 }
 
 describe('Inline Union Param Docs Tests', () => {
-	const filePath = 'tests/cases/inline-union-param-docs.ts';
+	const filePath = 'tests/cases/inline-union-param.ts';
 	const { proxy, absolutePath, code } = createProxyFromCase(filePath);
 
 	it('should find nothing', () => {
@@ -42,7 +42,7 @@ describe('Inline Union Param Docs Tests', () => {
 });
 
 describe('Union Type Param Docs Tests', () => {
-	const filePath = 'tests/cases/union-type-param-docs.ts';
+	const filePath = 'tests/cases/union-type-param.ts';
 	const { proxy, absolutePath, code } = createProxyFromCase(filePath);
 
 	it('should find nothing', () => {
@@ -87,7 +87,7 @@ describe('Union Type Param Docs Tests', () => {
 });
 
 describe('Nested Union Type Param Docs Tests', () => {
-	const filePath = 'tests/cases/union-type-param-docs.ts';
+	const filePath = 'tests/cases/union-type-param.ts';
 	const { proxy, absolutePath, code } = createProxyFromCase(filePath);
 
 	it('should find nothing', () => {
