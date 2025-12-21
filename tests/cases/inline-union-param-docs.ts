@@ -1,7 +1,7 @@
 /**
  * Inline union docs function
  */
-function test(
+function testFn(
 	x: /**
 	 * foo docs
 	 * */
@@ -10,6 +10,23 @@ function test(
 		 * bar docs
 		 * */
 		| 'bar'
+		| 'baz'
 ) {}
 
-test('bar');
+/**
+ * foo test
+ */
+testFn('foo');
+
+/**
+ * bar test
+ */
+testFn('bar');
+
+/**
+ * baz test
+ */
+testFn('baz');
+
+// @ts-ignore
+testFn('');

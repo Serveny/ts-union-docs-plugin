@@ -14,7 +14,7 @@
         "url": "https://github.com/Serveny/ts-union-docs-plugin"
     },
     "devDependencies": {
-        "@types/node": "25.0.1",
+        "@types/node": "25.0.3",
         "rollup-plugin-node-externals": "8.1.2",
         "typescript": "5.9.3",
         "vite": "7.3.0",
@@ -28,6 +28,7 @@
         "refresh": "npm run build && cd ../example && npm i",
         "watch-and-refresh": "npx nodemon -w ./src -e ts -x \"npm run build && cd ../example && npm i\"",
         "debug": "TSS_DEBUG=5667 code ../example --user-data-dir ~/.vscode-debug/",
-        "test": "vitest run"
+        "test": "vitest run",
+        "test:watch": "vitest"
     }
 }
