@@ -56,3 +56,9 @@ export function createProxyFromCase(relativeFilePath: string) {
 
 	return { proxy, absolutePath, code };
 }
+
+export function tagsToText(quickInfo: ts.QuickInfo) {
+	return quickInfo.tags
+		?.map((tag) => tag.text?.map((t) => t.text)?.join(''))
+		.join('');
+}
