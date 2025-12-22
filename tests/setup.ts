@@ -51,5 +51,8 @@ export function createProxyFromCase(relativeFilePath: string) {
 	const plugin = new UnionTypeDocsPlugin(ts as any);
 	const proxy = plugin.create(mockInfo as ts.server.PluginCreateInfo);
 
+	// WARM-UP because of TypeScript lazy lib loading
+	proxy.getQuickInfoAtPosition(absolutePath, 0);
+
 	return { proxy, absolutePath, code };
 }

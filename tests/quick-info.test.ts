@@ -1,5 +1,5 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { createProxyFromCase } from './setup';
 
 function tagsToText(quickInfo: TS.QuickInfo) {
@@ -8,9 +8,14 @@ function tagsToText(quickInfo: TS.QuickInfo) {
 		.join('');
 }
 
+const cases = {
+	inlineUnionParam: createProxyFromCase('tests/cases/inline-union-param.ts'),
+	mixxxTypes: createProxyFromCase('tests/cases/mixxx-types.ts'),
+	unionTypeParam: createProxyFromCase('tests/cases/union-type-param.ts'),
+};
+
 describe('Inline Union Param Docs Tests', () => {
-	const filePath = 'tests/cases/inline-union-param.ts';
-	const { proxy, absolutePath, code } = createProxyFromCase(filePath);
+	const { proxy, absolutePath, code } = cases.inlineUnionParam;
 
 	it('should find nothing', () => {
 		const cursorPos = code.indexOf(`testFn('baz')`);
@@ -42,8 +47,7 @@ describe('Inline Union Param Docs Tests', () => {
 });
 
 describe('Union Type Param Docs Tests', () => {
-	const filePath = 'tests/cases/union-type-param.ts';
-	const { proxy, absolutePath, code } = createProxyFromCase(filePath);
+	const { proxy, absolutePath, code } = cases.unionTypeParam;
 
 	it('should find nothing', () => {
 		const cursorPos = code.indexOf(`logColor('')`);
@@ -76,7 +80,7 @@ describe('Union Type Param Docs Tests', () => {
 		expect(tagsToText(result!)).toBe('');
 	});
 
-	it('should find fourth js doc comment of union type', () => {
+	it('should find fourth js doc comment of union type template', () => {
 		const cursorPos = code.indexOf(`logColor('A100')`);
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
@@ -84,11 +88,19 @@ describe('Union Type Param Docs Tests', () => {
 			'color\n> A number\n> \n> \n> _@range_ 1-4'
 		);
 	});
+
+	it('should find fith js doc comment of union type template containing two numbers', () => {
+		const cursorPos = code.indexOf(`logColor('1B27')`);
+		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
+		expect(result).toBeDefined();
+		expect(tagsToText(result!)).toContain(
+			'color\n> Two numbers in one template'
+		);
+	});
 });
 
 describe('Nested Union Type Param Docs Tests', () => {
-	const filePath = 'tests/cases/union-type-param.ts';
-	const { proxy, absolutePath, code } = createProxyFromCase(filePath);
+	const { proxy, absolutePath, code } = cases.unionTypeParam;
 
 	it('should find nothing of union type', () => {
 		const cursorPos = code.indexOf(`logClassColor('')`);
@@ -159,8 +171,7 @@ describe('Nested Union Type Param Docs Tests', () => {
 });
 
 describe('Mixxx Types Param Docs Tests', () => {
-	const filePath = 'tests/cases/mixxx-types.ts';
-	const { proxy, absolutePath, code } = createProxyFromCase(filePath);
+	const { proxy, absolutePath, code } = cases.mixxxTypes;
 
 	it('should find nothing', () => {
 		const cursorPos = code.indexOf(`getValue('', '')`);
