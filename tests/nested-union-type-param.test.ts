@@ -64,7 +64,7 @@ describe('Nested Union Type Param Docs Tests', () => {
 	});
 
 	it('should find fourth js doc comment of double nested template', () => {
-		const cursorPos = code.indexOf(`logClassColor('Color-1-A1')`);
+		const cursorPos = code.indexOf(`logNColor('Color-1-A1')`);
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
 		expect(tagsToText(result!)).toContain(

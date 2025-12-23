@@ -20,11 +20,11 @@ function getValue<TGroup extends Group>(
 	return 0;
 }
 
+// @ts-ignore
 getValue('', '');
 getValue('[App]', 'gui_tick_50ms_period_s');
 getValue('[Channel1]', 'beatloop_size');
 getValue('[Auxiliary1]', 'pregain_up_small');
-getValue('[Auxiliary2]', 'PeakIndicator1_down_small');
 
 /**
  * Sets a control value
@@ -41,6 +41,7 @@ function setValue<TGroup extends Group>(
 ) {}
 
 setValue('[Channel1]', 'beatjump_4_backward', 42);
+setValue('[EffectRack1_EffectUnit1_Effect1]', 'parameter1_down_small', 1);
 
 /*
  * ===================================================
@@ -52,29 +53,25 @@ namespace MixxxControls {
 	/*
 	 * Public
 	 */
-	export type MixxxGroup = keyof Controls | (string & {});
+	export type MixxxGroup = keyof Controls;
 
 	// All controls
-	export type MixxxControl<TGroup> =
-		| (string & {})
-		| (0 extends 1 & TGroup // is any check
-				? string
-				: TGroup extends keyof Controls | keyof ReadOnly.ReadOnlyControls
-				?
-						| (TGroup extends keyof Controls ? Controls[TGroup] : never)
-						| (TGroup extends keyof ReadOnly.ReadOnlyControls
-								? ReadOnly.ReadOnlyControls[TGroup]
-								: never)
-				: string);
+	export type MixxxControl<TGroup> = 0 extends 1 & TGroup // is any check
+		? string
+		: TGroup extends keyof Controls | keyof ReadOnly.ReadOnlyControls
+		?
+				| (TGroup extends keyof Controls ? Controls[TGroup] : never)
+				| (TGroup extends keyof ReadOnly.ReadOnlyControls
+						? ReadOnly.ReadOnlyControls[TGroup]
+						: never)
+		: string;
 
 	// Controls that are read & write at the same time
-	export type MixxxControlReadAndWrite<TGroup> =
-		| (string & {})
-		| (0 extends 1 & TGroup // is any check
-				? string
-				: TGroup extends keyof Controls
-				? Controls[TGroup]
-				: string);
+	export type MixxxControlReadAndWrite<TGroup> = 0 extends 1 & TGroup // is any check
+		? string
+		: TGroup extends keyof Controls
+		? Controls[TGroup]
+		: string;
 
 	/*
 	 * Group <-> control linking

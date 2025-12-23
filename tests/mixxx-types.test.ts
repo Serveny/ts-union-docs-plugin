@@ -37,9 +37,7 @@ https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)`);
 > 
 > _@since_ New in version 2.4.0.
 > 
-> _@readonly_
-> Value of the control (within it's range according Mixxx Controls manual page:
-https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)`);
+> _@readonly_`);
 	});
 
 	it('should find beatloop_size docs', () => {
@@ -62,9 +60,7 @@ https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)`);
 > 
 > _@feedback_ Beatloop size spinbox and possibly loop section on waveform
 > 
-> _@since_ New in version 2.1.0.
-> Value of the control (within it's range according Mixxx Controls manual page:
-https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)`);
+> _@since_ New in version 2.1.0.`);
 	});
 
 	it('should find pregain_up_small docs', () => {
@@ -88,17 +84,16 @@ https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)`);
 > _@kind_ pot meter control
 > 
 > 
-> Increases the value by smaller step, sets the speed one small step higher (1 % default)
-> Value of the control (within it's range according Mixxx Controls manual page:
-https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)`);
+> Increases the value by smaller step, sets the speed one small step higher (1 % default)`);
 	});
 
-	it('should find PeakIndicator1_down_small docs', () => {
+	it('should find parameter1_down_small docs', () => {
 		const cursorPos = code.indexOf(
-			`getValue('[Auxiliary2]', 'PeakIndicator1_down_small')`
+			`setValue('[EffectRack1_EffectUnit1_Effect1]', 'parameter1_down_small', 1)`
 		);
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
+		console.log('TEXT', tagsToText(result!));
 		expect(tagsToText(result!))
 			.toContain(`Name of the control e.g. "play_indicator"
 > Indicates when the signal is clipping (too loud for the hardware and is being distorted) for the left channel.
@@ -111,8 +106,8 @@ https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)`);
 > 
 > _@feedback_ Clip light (left)
 > 
-> _@kind_ pot meter control
-> Value of the control (within it's range according Mixxx Controls manual page:
-https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)`);
+>
+> Decreases the value by smaller step, sets the speed one small step lower (1 % default)
+> _@kind_ pot meter control`);
 	});
 });
