@@ -1,6 +1,7 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
 export declare enum SupportedType {
-    Paramter = 0
+    Paramter = 0,
+    Variable = 1
 }
 export declare class UnionInfo {
     type: SupportedType;
@@ -27,6 +28,7 @@ export declare class TypeInfoFactory {
     private getCallExpression;
     private getUnionParamtersInfo;
     private getUnionInfo;
+    private getUnionVariableInfo;
     private getValue;
     private collectUnionMemberNodes;
     private collectConditionalTypeNode;

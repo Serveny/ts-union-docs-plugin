@@ -1,12 +1,12 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
-import { CalledNode, UnionInfo } from './info';
+import { CalledNode, SupportedType, UnionInfo } from './info';
 
 type TagIdx = {
 	tag: TS.JSDocTagInfo;
 	idx: number;
 };
 
-export function addExtraJSDocTagInfo(
+export function addExtraQuickInfo(
 	ts: typeof TS,
 	quickInfo: TS.QuickInfo,
 	typesInfo: UnionInfo[]
@@ -14,6 +14,16 @@ export function addExtraJSDocTagInfo(
 	if (typesInfo.length === 0) return;
 	typesInfo.forEach((p) => addDocComment(ts, p));
 
+	// if the first type is a param, the others must also be parameters
+	switch (typesInfo[0].type) {
+		case SupportedType.Paramter:
+			return addExtraJDocTagInfo(quickInfo, typesInfo);
+		case SupportedType.Variable:
+			return addExtraDocumentation(quickInfo, typesInfo);
+	}
+}
+
+function addExtraJDocTagInfo(quickInfo: TS.QuickInfo, typesInfo: UnionInfo[]) {
 	if (!quickInfo.tags) quickInfo.tags = [];
 
 	const tagIdxs: TagIdx[] =
@@ -28,16 +38,14 @@ export function addExtraJSDocTagInfo(
 			: quickInfo.tags),
 	];
 
-	for (const paramInfo of typesInfo) {
-		const jsDocTag = findJsDocParamTagByName(tagIdxs, paramInfo.name);
+	for (const typeInfo of typesInfo) {
+		const jsDocTag = findJsDocParamTagByName(tagIdxs, typeInfo.name);
 
 		// If type info found, create new quick info tag
-		if ((paramInfo.docComment?.length ?? 0) > 0) {
+		if ((typeInfo.docComment?.length ?? 0) > 0) {
 			// If no js doc comment for param found, fill with default
-			const newTag = addParamTagInfo(
-				jsDocTag?.tag ?? defaultParamJSDocTag(paramInfo.name),
-				paramInfo
-			);
+			const tag = jsDocTag?.tag ?? defaultParamJSDocTag(typeInfo.name);
+			const newTag = addTagInfo(tag, typeInfo);
 			newTags.push(newTag);
 		}
 	}
@@ -49,6 +57,24 @@ export function addExtraJSDocTagInfo(
 		newTags.push(...quickInfo.tags.filter((_, i) => i > lastParamTagIdx));
 
 	quickInfo.tags = newTags;
+}
+
+function addExtraDocumentation(
+	quickInfo: TS.QuickInfo,
+	typesInfo: UnionInfo[]
+) {
+	const newDocs = quickInfo.documentation ? [...quickInfo.documentation] : [];
+
+	for (const typeInfo of typesInfo) {
+		newDocs.push(
+			createMarkdownDisplayPart(
+				typeInfo.docComment
+					?.map((line, i) => (i > 0 ? (line = '> ' + line) : line))
+					.join('\n') ?? ''
+			)
+		);
+	}
+	quickInfo.documentation = newDocs;
 }
 
 function findJsDocParamTagByName(tags: TagIdx[], name: string): TagIdx | null {
@@ -67,11 +93,11 @@ function defaultParamJSDocTag(name: string): TS.JSDocTagInfo {
 		name: 'param',
 		text: [
 			{
-				kind: 'parameterName',
+				kind: 'keyword',
 				text: name,
 			},
 		],
-	} as TS.JSDocTagInfo;
+	};
 }
 
 function createMarkdownDisplayPart(mdText: string): TS.SymbolDisplayPart {
@@ -81,14 +107,14 @@ function createMarkdownDisplayPart(mdText: string): TS.SymbolDisplayPart {
 	} as TS.SymbolDisplayPart;
 }
 
-function addParamTagInfo(
+function addTagInfo(
 	oldTag: TS.JSDocTagInfo,
 	typeInfo: UnionInfo | undefined
 ): TS.JSDocTagInfo {
+	if (!typeInfo?.docComment) return oldTag;
 	const newTag: TS.JSDocTagInfo = JSON.parse(JSON.stringify(oldTag));
-	if (!typeInfo?.docComment) return newTag;
 	if (!newTag.text) newTag.text = [];
-	newTag.text!.push(
+	newTag.text.push(
 		createMarkdownDisplayPart(
 			typeInfo.docComment
 				?.map((line, i) => (i > 0 ? (line = '> ' + line) : line))

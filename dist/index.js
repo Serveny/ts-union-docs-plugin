@@ -1,115 +1,9 @@
 "use strict";
-function addExtraJSDocTagInfo(ts, quickInfo, typesInfo) {
-  if (typesInfo.length === 0) return;
-  typesInfo.forEach((p) => addDocComment(ts, p));
-  if (!quickInfo.tags) quickInfo.tags = [];
-  const tagIdxs = quickInfo.tags?.map((tag, idx) => ({ tag, idx })).filter((ti) => ti.tag.name === "param") ?? [];
-  const newTags = [
-    ...tagIdxs.length > 0 ? quickInfo.tags.filter((_, i) => i < tagIdxs[0].idx) : quickInfo.tags
-  ];
-  for (const paramInfo of typesInfo) {
-    const jsDocTag = findJsDocParamTagByName(tagIdxs, paramInfo.name);
-    if ((paramInfo.docComment?.length ?? 0) > 0) {
-      const newTag = addParamTagInfo(
-        jsDocTag?.tag ?? defaultParamJSDocTag(paramInfo.name),
-        paramInfo
-      );
-      newTags.push(newTag);
-    }
-  }
-  const lastParamTagIdx = tagIdxs.length === 0 ? 0 : tagIdxs[tagIdxs.length - 1]?.idx ?? 0;
-  if (quickInfo.tags.length - 1 > lastParamTagIdx)
-    newTags.push(...quickInfo.tags.filter((_, i) => i > lastParamTagIdx));
-  quickInfo.tags = newTags;
-}
-function findJsDocParamTagByName(tags, name) {
-  const foundTag = tags.find(
-    ({ tag }) => tag.text?.some(
-      (textPart) => textPart.kind === "parameterName" && textPart.text.toLowerCase() === name.toLowerCase()
-    )
-  );
-  return foundTag ?? null;
-}
-function defaultParamJSDocTag(name) {
-  return {
-    name: "param",
-    text: [
-      {
-        kind: "parameterName",
-        text: name
-      }
-    ]
-  };
-}
-function createMarkdownDisplayPart(mdText) {
-  return {
-    text: mdText,
-    kind: "markdown"
-  };
-}
-function addParamTagInfo(oldTag, typeInfo) {
-  const newTag = JSON.parse(JSON.stringify(oldTag));
-  if (!typeInfo?.docComment) return newTag;
-  if (!newTag.text) newTag.text = [];
-  newTag.text.push(
-    createMarkdownDisplayPart(
-      typeInfo.docComment?.map((line, i) => i > 0 ? line = "> " + line : line).join("\n")
-    )
-  );
-  return newTag;
-}
-function addDocComment(ts, param) {
-  const visitedNodes = /* @__PURE__ */ new Set();
-  const comments = [];
-  function add(node) {
-    const id = node.id;
-    if (visitedNodes.has(id)) return false;
-    visitedNodes.add(id);
-    comments.push(extractJSDocsFromNode(ts, node));
-    return true;
-  }
-  for (const entryNode of param.entries.reverse()) {
-    add(entryNode);
-    let parent = entryNode.callParent;
-    while (parent != null) {
-      add(parent);
-      parent = parent.callParent;
-    }
-  }
-  const lines = comments.reverse().flat();
-  if (!param.docComment) param.docComment = lines;
-  else param.docComment.push(...lines);
-}
-function extractJSDocsFromNode(ts, node) {
-  node = node.original ?? node;
-  const sourceFile = node.getSourceFile();
-  if (!sourceFile) return [];
-  const sourceText = sourceFile.getFullText();
-  const start = node.getStart();
-  const comment = getLeadingComment(ts, sourceText, start);
-  return comment ? prepareJSDocText(sourceText.substring(comment.pos, comment.end)) : [];
-}
-function getLeadingComment(ts, text, pos) {
-  const comments = ts.getLeadingCommentRanges(text, pos) ?? [];
-  if (comments.length > 0 && text[comments[0].pos + 2] === "*")
-    return comments[comments.length - 1];
-  text = text.substring(0, pos);
-  const commentStart = text.lastIndexOf("/**");
-  if (commentStart === -1) return;
-  const commentEnd = text.lastIndexOf("*/");
-  if (commentEnd === -1) return;
-  const textBetween = text.substring(commentEnd + 2, pos);
-  if (/[^ \t|\n]/.test(textBetween)) return;
-  return {
-    pos: commentStart + 3,
-    end: commentEnd,
-    kind: ts.SyntaxKind.MultiLineCommentTrivia
-  };
-}
-function prepareJSDocText(rawComment) {
-  return rawComment.replace("/**", "").replace("*/", "").split("\n").map((line) => line.trim().replace(/^\* ?/, "")).map((line) => line.replace(/@(\w+)/g, (_, tag) => `
-> _@${tag}_`));
-}
+var SupportedType = /* @__PURE__ */ ((SupportedType2) => {
+  SupportedType2[SupportedType2["Paramter"] = 0] = "Paramter";
+  SupportedType2[SupportedType2["Variable"] = 1] = "Variable";
+  return SupportedType2;
+})(SupportedType || {});
 class UnionInfo {
   constructor(type, name, entries, value, docComment) {
     this.type = type;
@@ -137,6 +31,8 @@ class TypeInfoFactory {
     if (!symbol) return null;
     const callExpression = this.getCallExpression(node);
     if (callExpression) return this.getUnionParamtersInfo(callExpression);
+    const variableInfo = this.getUnionVariableInfo(symbol);
+    if (variableInfo) return [variableInfo];
     return null;
   }
   findNodeAtPos(srcFile, pos) {
@@ -170,6 +66,24 @@ class TypeInfoFactory {
     return new UnionInfo(
       0,
       paramSymbol.name,
+      valueNodes,
+      value
+    );
+  }
+  getUnionVariableInfo(symbol) {
+    const decl = symbol.valueDeclaration;
+    if (!decl || !(this.ts.isVariableDeclaration(decl) || this.ts.isPropertyDeclaration(decl)))
+      return null;
+    if (!decl.type || !decl.initializer) return null;
+    const unionMemberNodes = this.collectUnionMemberNodes(decl.type);
+    if (unionMemberNodes.length === 0) return null;
+    const value = this.getValue(decl.initializer);
+    const valueNodes = unionMemberNodes.filter(
+      (entry) => this.cmp(decl.initializer, entry)
+    );
+    return new UnionInfo(
+      1,
+      symbol.name,
       valueNodes,
       value
     );
@@ -390,6 +304,134 @@ function cartesianProduct(arrays) {
     [[]]
   );
 }
+function addExtraQuickInfo(ts, quickInfo, typesInfo) {
+  if (typesInfo.length === 0) return;
+  typesInfo.forEach((p) => addDocComment(ts, p));
+  switch (typesInfo[0].type) {
+    case SupportedType.Paramter:
+      return addExtraJDocTagInfo(quickInfo, typesInfo);
+    case SupportedType.Variable:
+      return addExtraDocumentation(quickInfo, typesInfo);
+  }
+}
+function addExtraJDocTagInfo(quickInfo, typesInfo) {
+  if (!quickInfo.tags) quickInfo.tags = [];
+  const tagIdxs = quickInfo.tags?.map((tag, idx) => ({ tag, idx })).filter((ti) => ti.tag.name === "param") ?? [];
+  const newTags = [
+    ...tagIdxs.length > 0 ? quickInfo.tags.filter((_, i) => i < tagIdxs[0].idx) : quickInfo.tags
+  ];
+  for (const typeInfo of typesInfo) {
+    const jsDocTag = findJsDocParamTagByName(tagIdxs, typeInfo.name);
+    if ((typeInfo.docComment?.length ?? 0) > 0) {
+      const tag = jsDocTag?.tag ?? defaultParamJSDocTag(typeInfo.name);
+      const newTag = addTagInfo(tag, typeInfo);
+      newTags.push(newTag);
+    }
+  }
+  const lastParamTagIdx = tagIdxs.length === 0 ? 0 : tagIdxs[tagIdxs.length - 1]?.idx ?? 0;
+  if (quickInfo.tags.length - 1 > lastParamTagIdx)
+    newTags.push(...quickInfo.tags.filter((_, i) => i > lastParamTagIdx));
+  quickInfo.tags = newTags;
+}
+function addExtraDocumentation(quickInfo, typesInfo) {
+  const newDocs = quickInfo.documentation ? [...quickInfo.documentation] : [];
+  for (const typeInfo of typesInfo) {
+    newDocs.push(
+      createMarkdownDisplayPart(
+        typeInfo.docComment?.map((line, i) => i > 0 ? line = "> " + line : line).join("\n") ?? ""
+      )
+    );
+  }
+  quickInfo.documentation = newDocs;
+}
+function findJsDocParamTagByName(tags, name) {
+  const foundTag = tags.find(
+    ({ tag }) => tag.text?.some(
+      (textPart) => textPart.kind === "parameterName" && textPart.text.toLowerCase() === name.toLowerCase()
+    )
+  );
+  return foundTag ?? null;
+}
+function defaultParamJSDocTag(name) {
+  return {
+    name: "param",
+    text: [
+      {
+        kind: "keyword",
+        text: name
+      }
+    ]
+  };
+}
+function createMarkdownDisplayPart(mdText) {
+  return {
+    text: mdText,
+    kind: "markdown"
+  };
+}
+function addTagInfo(oldTag, typeInfo) {
+  if (!typeInfo?.docComment) return oldTag;
+  const newTag = JSON.parse(JSON.stringify(oldTag));
+  if (!newTag.text) newTag.text = [];
+  newTag.text.push(
+    createMarkdownDisplayPart(
+      typeInfo.docComment?.map((line, i) => i > 0 ? line = "> " + line : line).join("\n")
+    )
+  );
+  return newTag;
+}
+function addDocComment(ts, param) {
+  const visitedNodes = /* @__PURE__ */ new Set();
+  const comments = [];
+  function add(node) {
+    const id = node.id;
+    if (visitedNodes.has(id)) return false;
+    visitedNodes.add(id);
+    comments.push(extractJSDocsFromNode(ts, node));
+    return true;
+  }
+  for (const entryNode of param.entries.reverse()) {
+    add(entryNode);
+    let parent = entryNode.callParent;
+    while (parent != null) {
+      add(parent);
+      parent = parent.callParent;
+    }
+  }
+  const lines = comments.reverse().flat();
+  if (!param.docComment) param.docComment = lines;
+  else param.docComment.push(...lines);
+}
+function extractJSDocsFromNode(ts, node) {
+  node = node.original ?? node;
+  const sourceFile = node.getSourceFile();
+  if (!sourceFile) return [];
+  const sourceText = sourceFile.getFullText();
+  const start = node.getStart();
+  const comment = getLeadingComment(ts, sourceText, start);
+  return comment ? prepareJSDocText(sourceText.substring(comment.pos, comment.end)) : [];
+}
+function getLeadingComment(ts, text, pos) {
+  const comments = ts.getLeadingCommentRanges(text, pos) ?? [];
+  if (comments.length > 0 && text[comments[0].pos + 2] === "*")
+    return comments[comments.length - 1];
+  text = text.substring(0, pos);
+  const commentStart = text.lastIndexOf("/**");
+  if (commentStart === -1) return;
+  const commentEnd = text.lastIndexOf("*/");
+  if (commentEnd === -1) return;
+  const textBetween = text.substring(commentEnd + 2, pos);
+  if (/[^ \t|\n]/.test(textBetween)) return;
+  return {
+    pos: commentStart + 3,
+    end: commentEnd,
+    kind: ts.SyntaxKind.MultiLineCommentTrivia
+  };
+}
+function prepareJSDocText(rawComment) {
+  return rawComment.replace("/**", "").replace("*/", "").split("\n").map((line) => line.trim().replace(/^\* ?/, "")).map((line) => line.replace(/@(\w+)/g, (_, tag) => `
+> _@${tag}_`));
+}
 class UnionTypeDocsPlugin {
   constructor(ts) {
     this.ts = ts;
@@ -409,7 +451,7 @@ class UnionTypeDocsPlugin {
     if (!quickInfo) return quickInfo;
     const typeInfo = this.typeInfoFactory.create(fileName, pos);
     if (!typeInfo) return quickInfo;
-    addExtraJSDocTagInfo(this.ts, quickInfo, typeInfo);
+    addExtraQuickInfo(this.ts, quickInfo, typeInfo);
     return quickInfo;
   }
   getCompletionsAtPosition(fileName, pos, opts, fmt) {

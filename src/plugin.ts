@@ -1,5 +1,5 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
-import { addExtraJSDocTagInfo } from './docs';
+import { addExtraQuickInfo } from './docs';
 import { TypeInfoFactory } from './info';
 
 export class UnionTypeDocsPlugin {
@@ -29,7 +29,7 @@ export class UnionTypeDocsPlugin {
 		const typeInfo = this.typeInfoFactory.create(fileName, pos);
 		if (!typeInfo) return quickInfo;
 
-		addExtraJSDocTagInfo(this.ts, quickInfo, typeInfo);
+		addExtraQuickInfo(this.ts, quickInfo, typeInfo);
 
 		return quickInfo;
 	}

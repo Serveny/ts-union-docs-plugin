@@ -2,6 +2,7 @@ import type * as TS from 'typescript/lib/tsserverlibrary';
 
 export enum SupportedType {
 	Paramter,
+	Variable,
 }
 
 // This class holds every type information the plugin needs
@@ -49,7 +50,9 @@ export class TypeInfoFactory {
 		const callExpression = this.getCallExpression(node);
 		if (callExpression) return this.getUnionParamtersInfo(callExpression);
 
-		// TODO: Find union type info for variable
+		const variableInfo = this.getUnionVariableInfo(symbol);
+		if (variableInfo) return [variableInfo];
+
 		return null;
 	}
 
@@ -90,7 +93,6 @@ export class TypeInfoFactory {
 		if (!decl || !this.ts.isParameter(decl) || !decl.type) return null;
 
 		const unionMemberNodes = this.collectUnionMemberNodes(decl.type);
-
 		if (unionMemberNodes.length === 0) return null;
 
 		const value = this.getValue(arg);
@@ -99,6 +101,34 @@ export class TypeInfoFactory {
 		return new UnionInfo(
 			SupportedType.Paramter,
 			paramSymbol.name,
+			valueNodes,
+			value
+		);
+	}
+
+	private getUnionVariableInfo(symbol: TS.Symbol): UnionInfo | null {
+		const decl = symbol.valueDeclaration;
+		if (
+			!decl ||
+			!(
+				this.ts.isVariableDeclaration(decl) ||
+				this.ts.isPropertyDeclaration(decl)
+			)
+		)
+			return null;
+		if (!decl.type || !decl.initializer) return null;
+
+		const unionMemberNodes = this.collectUnionMemberNodes(decl.type);
+		if (unionMemberNodes.length === 0) return null;
+
+		const value = this.getValue(decl.initializer);
+		const valueNodes = unionMemberNodes.filter((entry) =>
+			this.cmp(decl.initializer as TS.Expression, entry)
+		);
+
+		return new UnionInfo(
+			SupportedType.Variable,
+			symbol.name,
 			valueNodes,
 			value
 		);

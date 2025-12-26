@@ -62,3 +62,7 @@ export function tagsToText(quickInfo: ts.QuickInfo) {
 		?.map((tag) => tag.text?.map((t) => t.text)?.join(''))
 		.join('');
 }
+
+export function documentationToText(quickInfo: ts.QuickInfo) {
+	return quickInfo.documentation?.map((tag) => tag.text).join('');
+}
