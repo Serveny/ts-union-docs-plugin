@@ -288,7 +288,7 @@ class TypeInfoFactory {
   }
   // Creates new literal nodes with every possible content
   buildTemplateLiteralNode(node) {
-    const headText = escapeRegExp(node.head.text), ts = this.ts;
+    const headText = node.head.text, ts = this.ts;
     const nodes = [];
     for (const span of node.templateSpans) {
       const spanNodes = [];
@@ -333,7 +333,8 @@ class TypeInfoFactory {
     }
     const catProd = cartesianProduct(nodes).flatMap((compNodes) => {
       const isRegex = compNodes.some((n) => n.isRegexPattern === true);
-      const fullText = headText + compNodes.map((n) => n.text).join("");
+      const txt = (n) => isRegex && n.isRegexPattern === false ? escapeRegExp(n.text) : n.text;
+      let fullText = headText + compNodes.map(txt).join("");
       return compNodes.map(
         (cn) => this.createLiteralNode(cn, fullText, cn.callParent, isRegex)
       );

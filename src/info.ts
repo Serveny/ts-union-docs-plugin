@@ -292,7 +292,7 @@ export class TypeInfoFactory {
 	private buildTemplateLiteralNode(
 		node: TS.TemplateLiteralTypeNode
 	): CalledNode[] {
-		const headText = escapeRegExp(node.head.text),
+		const headText = node.head.text,
 			ts = this.ts;
 		const nodes: (CalledNode & TS.LiteralLikeNode)[][] = [];
 
@@ -351,7 +351,9 @@ export class TypeInfoFactory {
 
 		const catProd = cartesianProduct(nodes).flatMap((compNodes) => {
 			const isRegex = compNodes.some((n) => n.isRegexPattern === true);
-			const fullText = headText + compNodes.map((n) => n.text).join('');
+			const txt = (n: CalledNode & TS.LiteralLikeNode) =>
+				isRegex && n.isRegexPattern === false ? escapeRegExp(n.text) : n.text;
+			let fullText = headText + compNodes.map(txt).join('');
 			return compNodes.map((cn) =>
 				this.createLiteralNode(cn, fullText, cn.callParent, isRegex)
 			);
