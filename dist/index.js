@@ -59,19 +59,20 @@ function addParamTagInfo(oldTag, typeInfo) {
   return newTag;
 }
 function addDocComment(ts, param) {
-  const visited = /* @__PURE__ */ new Set();
+  const visitedNodes = /* @__PURE__ */ new Set();
   const comments = [];
-  for (const entryNode of param.entries) {
-    const id = entryNode.id;
-    if (visited.has(id)) continue;
-    visited.add(id);
-    comments.push(extractJSDocsFromNode(ts, entryNode));
+  function add(node) {
+    const id = node.id;
+    if (visitedNodes.has(id)) return false;
+    visitedNodes.add(id);
+    comments.push(extractJSDocsFromNode(ts, node));
+    return true;
+  }
+  for (const entryNode of param.entries.reverse()) {
+    add(entryNode);
     let parent = entryNode.callParent;
     while (parent != null) {
-      if (!visited.has(parent.id)) {
-        comments.push(extractJSDocsFromNode(ts, parent));
-        visited.add(parent.id);
-      }
+      add(parent);
       parent = parent.callParent;
     }
   }
@@ -119,11 +120,9 @@ class UnionInfo {
   }
 }
 class TypeInfoFactory {
-  // ID counter for generating synthetic nodes
   constructor(ts, ls) {
     this.ts = ts;
     this.ls = ls;
-    this.id = -1;
   }
   create(fileName, position) {
     const program = this.ls.getProgram();
@@ -279,7 +278,7 @@ class TypeInfoFactory {
   }
   createLiteralNode(node, text, callParent, isRegexPattern2) {
     const litNode = this.ts.factory.createStringLiteral(text);
-    litNode.id = this.id--;
+    litNode.id = node.original?.id ?? node.id;
     return calledNode(
       litNode,
       callParent,

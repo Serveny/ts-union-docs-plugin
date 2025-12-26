@@ -24,7 +24,6 @@ function getValue<TGroup extends Group>(
 getValue('', '');
 getValue('[App]', 'gui_tick_50ms_period_s');
 getValue('[Channel1]', 'beatloop_size');
-getValue('[Auxiliary1]', 'pregain_up_small');
 
 /**
  * Sets a control value
@@ -41,6 +40,7 @@ function setValue<TGroup extends Group>(
 ) {}
 
 setValue('[Channel1]', 'beatjump_4_backward', 42);
+setValue('[Sampler1]', 'rate_up_small', 1);
 setValue('[EffectRack1_EffectUnit1_Effect1]', 'parameter1_down_small', 1);
 
 /*

@@ -21,7 +21,6 @@ export declare class TypeInfoFactory {
     private ts;
     private ls;
     private checker;
-    private id;
     constructor(ts: typeof TS, ls: TS.LanguageService);
     create(fileName: string, position: number): UnionInfo[] | null;
     private findNodeAtPos;

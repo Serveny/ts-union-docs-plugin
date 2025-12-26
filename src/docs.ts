@@ -99,22 +99,24 @@ function addParamTagInfo(
 }
 
 function addDocComment(ts: typeof TS, param: UnionInfo) {
-	const visited = new Set();
+	const visitedNodes = new Set();
 	const comments: string[][] = [];
 
+	function add(node: CalledNode): boolean {
+		const id = node.id;
+		if (visitedNodes.has(id)) return false;
+		visitedNodes.add(id);
+		comments.push(extractJSDocsFromNode(ts, node));
+		return true;
+	}
+
 	// Read out all comments
-	for (const entryNode of param.entries) {
-		const id = entryNode.id;
-		if (visited.has(id)) continue;
-		visited.add(id);
-		comments.push(extractJSDocsFromNode(ts, entryNode));
+	for (const entryNode of param.entries.reverse()) {
+		add(entryNode);
 
 		let parent = entryNode.callParent;
 		while (parent != null) {
-			if (!visited.has(parent.id)) {
-				comments.push(extractJSDocsFromNode(ts, parent));
-				visited.add(parent.id);
-			}
+			add(parent);
 			parent = parent.callParent;
 		}
 	}

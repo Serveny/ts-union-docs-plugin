@@ -26,7 +26,6 @@ export interface CalledNode extends TS.Node {
 
 export class TypeInfoFactory {
 	private checker!: TS.TypeChecker;
-	private id = -1; // ID counter for generating synthetic nodes
 
 	constructor(private ts: typeof TS, private ls: TS.LanguageService) {}
 
@@ -91,6 +90,7 @@ export class TypeInfoFactory {
 		if (!decl || !this.ts.isParameter(decl) || !decl.type) return null;
 
 		const unionMemberNodes = this.collectUnionMemberNodes(decl.type);
+
 		if (unionMemberNodes.length === 0) return null;
 
 		const value = this.getValue(arg);
@@ -279,7 +279,7 @@ export class TypeInfoFactory {
 		isRegexPattern?: boolean
 	): CalledNode & TS.LiteralLikeNode {
 		const litNode = this.ts.factory.createStringLiteral(text);
-		(litNode as any).id = this.id--;
+		(litNode as any).id = (node as any).original?.id ?? (node as any).id;
 		return calledNode(
 			litNode,
 			callParent,

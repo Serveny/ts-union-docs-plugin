@@ -63,23 +63,23 @@ https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)`);
 > _@since_ New in version 2.1.0.`);
 	});
 
-	it('should find pregain_up_small docs', () => {
+	it('should find rate_up_small docs', () => {
 		const cursorPos = code.indexOf(
-			`getValue('[Auxiliary1]', 'pregain_up_small')`
+			`setValue('[Sampler1]', 'rate_up_small', 1)`
 		);
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
 		expect(tagsToText(result!))
 			.toContain(`Name of the control e.g. "play_indicator"
-> Adjusts the gain of the input
+> Speed control
 > This is a ControlPotMeter control.
 > 
 > 
-> _@groups_ [AuxiliaryN], [MicrophoneN]
+> _@groups_ [ChannelN], [PreviewDeckN], [SamplerN]
 > 
-> _@range_ 0.0..1.0..4.0
+> _@range_ -1.0..1.0
 > 
-> _@feedback_ Microphone gain knob
+> _@feedback_ Speed slider
 > 
 > _@kind_ pot meter control
 > 
@@ -93,21 +93,20 @@ https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)`);
 		);
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
-		console.log('TEXT', tagsToText(result!));
 		expect(tagsToText(result!))
 			.toContain(`Name of the control e.g. "play_indicator"
-> Indicates when the signal is clipping (too loud for the hardware and is being distorted) for the left channel.
+> The scaled value of the Kth parameter.
+> See the Parameter Values section for more information.
 > This is a ControlPotMeter control.
 > 
 > 
-> _@groups_ [Master]
+> _@groups_ [EffectRack1_EffectUnitN_EffectM], [EqualizerRack1_[ChannelI]_Effect1], [QuickEffectRack1_[ChannelI]_Effect1]
 > 
-> _@range_ binary
+> _@range_ double
 > 
-> _@feedback_ Clip light (left)
+> _@kind_ pot meter control
 > 
->
-> Decreases the value by smaller step, sets the speed one small step lower (1 % default)
-> _@kind_ pot meter control`);
+> 
+> Decreases the value by smaller step, sets the speed one small step lower (1 % default)`);
 	});
 });
