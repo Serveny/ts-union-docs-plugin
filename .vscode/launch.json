@@ -8,8 +8,10 @@
             // See: https://github.com/microsoft/TypeScript/wiki/Debugging-Language-Service-in-VS-Code
             "type": "node",
             "request": "attach",
-            "name": "Attach to VS Code TS Server via Port",
-            "processId": "${command:PickProcess}",
+            "name": "Attach to TS Server (TSS_DEBUG=5667)",
+            "port": 5667,
+            "address": "localhost",
+            "sourceMaps": true,
         }
     ]
 }

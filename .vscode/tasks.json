@@ -4,7 +4,7 @@
     {
       "label": "Build & Install Deps",
       "type": "shell",
-      "command": "npm run refesh",
+      "command": "refesh",
       "problemMatcher": [],
       "detail": "Runs build in plugin and install in example project"
     },
