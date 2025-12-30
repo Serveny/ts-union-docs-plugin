@@ -18,14 +18,8 @@ class TypeInfoFactory {
     this.ts = ts;
     this.ls = ls;
   }
-  create(fileName, position) {
-    const program = this.ls.getProgram();
-    if (!program) return null;
-    this.checker = program.getTypeChecker();
-    if (!this.checker) return null;
-    const source = program.getSourceFile(fileName);
-    if (!source) return null;
-    const node = this.findNodeAtPos(source, position);
+  getTypeInfo(fileName, position) {
+    const node = this.getInitNode(fileName, position);
     if (!node) return null;
     const symbol = this.checker.getSymbolAtLocation(node);
     if (!symbol) return null;
@@ -34,6 +28,45 @@ class TypeInfoFactory {
     const variableInfo = this.getUnionVariableInfo(symbol);
     if (variableInfo) return [variableInfo];
     return null;
+  }
+  getContextualTypeInfo(fileName, position) {
+    const node = this.getInitNode(fileName, position);
+    if (!node) return null;
+    let expr = this.ts.isExpression(node) ? node : null;
+    if (!expr) {
+      let parent = node.parent;
+      while (parent && !this.ts.isExpression(parent)) parent = parent.parent;
+      expr = parent && this.ts.isExpression(parent) ? parent : null;
+    }
+    if (!expr) return null;
+    const contextualType = this.checker.getContextualType(expr);
+    if (!contextualType) return null;
+    const symbol = contextualType.getSymbol() || contextualType.aliasSymbol;
+    if (!symbol) return null;
+    const decl = symbol.getDeclarations();
+    if (!decl || decl.length === 0 || !this.ts.isTypeAliasDeclaration(decl[0]))
+      return null;
+    const tn = decl[0].type;
+    if (!tn) return null;
+    const unionMemberNodes = this.collectUnionMemberNodes(tn);
+    if (unionMemberNodes.length === 0) return null;
+    return new UnionInfo(
+      1,
+      "completion",
+      unionMemberNodes,
+      void 0
+    );
+  }
+  getInitNode(fileName, position) {
+    const program = this.ls.getProgram();
+    if (!program) return null;
+    this.checker = program.getTypeChecker();
+    if (!this.checker) return null;
+    const source = program.getSourceFile(fileName);
+    if (!source) return null;
+    const node = this.findNodeAtPos(source, position);
+    if (!node) return null;
+    return node;
   }
   findNodeAtPos(srcFile, pos) {
     const find = (node) => pos >= node.getStart() && pos < node.getEnd() ? this.ts.forEachChild(node, find) || node : null;
@@ -190,14 +223,14 @@ class TypeInfoFactory {
     }
     return [];
   }
-  createLiteralNode(node, text, callParent, isRegexPattern2) {
+  createLiteralNode(node, text, callParent, isRegexPattern) {
     const litNode = this.ts.factory.createStringLiteral(text);
     litNode.id = node.original?.id ?? node.id;
     return calledNode(
       litNode,
       callParent,
       node.original ?? node,
-      isRegexPattern2
+      isRegexPattern
     );
   }
   // Creates new literal nodes with every possible content
@@ -256,7 +289,7 @@ class TypeInfoFactory {
     return catProd;
   }
   cmp(expr, node) {
-    if (isRegexPattern(node) && this.ts.isStringLiteral(expr)) {
+    if (isRegexNode(node) && this.ts.isStringLiteral(expr)) {
       const pattern = new RegExp(`^${node.text}$`);
       return pattern.test(expr.text);
     }
@@ -281,18 +314,19 @@ class TypeInfoFactory {
     return false;
   }
 }
-function calledNode(node, callParent, original, isRegexPattern2) {
+function calledNode(node, callParent, original, isRegex) {
   const cNode = node;
   cNode.callParent = callParent;
   cNode.original = original;
-  cNode.isRegexPattern = isRegexPattern2;
+  cNode.isRegexPattern = isRegex;
   return cNode;
 }
 function getNodeText(node) {
-  const text = node.getSourceFile().text;
+  const text = node.getSourceFile()?.text;
+  if (!text) return "<No Source>";
   return text.substring(node.getStart(), node.getEnd());
 }
-function isRegexPattern(node) {
+function isRegexNode(node) {
   return node.isRegexPattern === true;
 }
 function escapeRegExp(string) {
@@ -432,6 +466,31 @@ function prepareJSDocText(rawComment) {
   return rawComment.replace("/**", "").replace("*/", "").split("\n").map((line) => line.trim().replace(/^\* ?/, "")).map((line) => line.replace(/@(\w+)/g, (_, tag) => `
 > _@${tag}_`));
 }
+function addTemplateCompletions(ts, completion, unionInfo) {
+  const entries = createTemplateCompletions(ts, unionInfo);
+  if (entries.length === 0) return;
+  completion.entries.push(...entries);
+  completion.entries.sort();
+}
+function createTemplateCompletions(ts, unionInfo) {
+  const entries = [];
+  const templateNodes = unionInfo.entries.filter((n) => isRegexNode(n));
+  if (templateNodes.length === 0) return entries;
+  for (const tn of templateNodes) {
+    const name = displayName(tn.text);
+    entries.push({
+      name,
+      kind: ts.ScriptElementKind.string,
+      sortText: name,
+      insertText: tn.text,
+      isSnippet: true
+    });
+  }
+  return entries;
+}
+function displayName(snippet) {
+  return snippet.replace(/\$\{\d+\|([^,|]+).*?\|\}/g, "$1").replace(/\$\{\d+:([^}]+)\}/g, "$1").replace(/\$\d+|\$\{\d+\}/g, "");
+}
 class UnionTypeDocsPlugin {
   constructor(ts) {
     this.ts = ts;
@@ -449,13 +508,17 @@ class UnionTypeDocsPlugin {
   getQuickInfoAtPosition(fileName, pos) {
     const quickInfo = this.ls.getQuickInfoAtPosition(fileName, pos);
     if (!quickInfo) return quickInfo;
-    const typeInfo = this.typeInfoFactory.create(fileName, pos);
+    const typeInfo = this.typeInfoFactory.getTypeInfo(fileName, pos);
     if (!typeInfo) return quickInfo;
     addExtraQuickInfo(this.ts, quickInfo, typeInfo);
     return quickInfo;
   }
   getCompletionsAtPosition(fileName, pos, opts, fmt) {
     const cmpl = this.ls.getCompletionsAtPosition(fileName, pos, opts, fmt);
+    if (!cmpl) return cmpl;
+    const typeInfo = this.typeInfoFactory.getContextualTypeInfo(fileName, pos);
+    if (!typeInfo) return cmpl;
+    addTemplateCompletions(this.ts, cmpl, typeInfo);
     return cmpl;
   }
 }

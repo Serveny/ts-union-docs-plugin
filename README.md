@@ -18,6 +18,9 @@ This plugin resolves the union member back to its original definition, pulling i
 
 ## 🚀 Get Started
 
+> [!TIP]  
+> If you are using VSCode, you can just install the [TS Union Docs VSCode Extension](https://github.com/Serveny/ts-union-docs-vscode-extension) instead.
+
 ### 1\. Installation
 
 Install typescript and the plugin as a development dependency in your project (in this example by npm):
@@ -89,7 +92,7 @@ Run a debug instance of VS Code that loads your local plugin code. The commands 
 > The project to be debugged must be located outside the ts-union-docs-plugin folder. It wont work otherwise. If you want to use the example project, you must copy or move it out of the folder.
 
 > [!IMPORTANT]  
-> [TS Union Docs VSCode extension](https://github.com/Serveny/ts-union-docs-vscode-extension) should not be installed in the debug instance, because then debugging will not work (It can't find the breakpoints)
+> [TS Union Docs VSCode Extension](https://github.com/Serveny/ts-union-docs-vscode-extension) should not be installed in the debug instance, because then debugging will not work (It can't find the breakpoints)
 
 1. **Start watcher in plugin project folder:**  
    This command builds the plugin and installs it in example project every time a file inside the plugin project was changed.

@@ -30,17 +30,8 @@ export class TypeInfoFactory {
 
 	constructor(private ts: typeof TS, private ls: TS.LanguageService) {}
 
-	create(fileName: string, position: number): UnionInfo[] | null {
-		const program = this.ls.getProgram();
-		if (!program) return null;
-
-		this.checker = program.getTypeChecker();
-		if (!this.checker) return null;
-
-		const source = program.getSourceFile(fileName);
-		if (!source) return null;
-
-		const node = this.findNodeAtPos(source, position);
+	getTypeInfo(fileName: string, position: number): UnionInfo[] | null {
+		const node = this.getInitNode(fileName, position);
 		if (!node) return null;
 
 		const symbol = this.checker.getSymbolAtLocation(node);
@@ -54,6 +45,58 @@ export class TypeInfoFactory {
 		if (variableInfo) return [variableInfo];
 
 		return null;
+	}
+
+	getContextualTypeInfo(fileName: string, position: number): UnionInfo | null {
+		const node = this.getInitNode(fileName, position);
+		if (!node) return null;
+
+		let expr: TS.Expression | null = this.ts.isExpression(node) ? node : null;
+		if (!expr) {
+			let parent = node.parent;
+			while (parent && !this.ts.isExpression(parent)) parent = parent.parent;
+			expr = parent && this.ts.isExpression(parent) ? parent : null;
+		}
+		if (!expr) return null;
+
+		const contextualType = this.checker.getContextualType(expr);
+		if (!contextualType) return null;
+
+		const symbol = contextualType.getSymbol() || contextualType.aliasSymbol;
+		if (!symbol) return null;
+
+		const decl = symbol.getDeclarations();
+		if (!decl || decl.length === 0 || !this.ts.isTypeAliasDeclaration(decl[0]))
+			return null;
+
+		const tn = decl[0].type;
+		if (!tn) return null;
+
+		const unionMemberNodes = this.collectUnionMemberNodes(tn);
+		if (unionMemberNodes.length === 0) return null;
+
+		return new UnionInfo(
+			SupportedType.Variable,
+			'completion',
+			unionMemberNodes,
+			undefined
+		);
+	}
+
+	private getInitNode(fileName: string, position: number) {
+		const program = this.ls.getProgram();
+		if (!program) return null;
+
+		this.checker = program.getTypeChecker();
+		if (!this.checker) return null;
+
+		const source = program.getSourceFile(fileName);
+		if (!source) return null;
+
+		const node = this.findNodeAtPos(source, position);
+		if (!node) return null;
+
+		return node;
 	}
 
 	private findNodeAtPos(srcFile: TS.SourceFile, pos: number): TS.Node | null {
@@ -394,7 +437,7 @@ export class TypeInfoFactory {
 
 	private cmp(expr: TS.Expression, node: CalledNode): boolean {
 		// check for generated regex pattern
-		if (isRegexPattern(node) && this.ts.isStringLiteral(expr)) {
+		if (isRegexNode(node) && this.ts.isStringLiteral(expr)) {
 			// Surround with ^...$, so the whole string must match
 			const pattern = new RegExp(`^${node.text}$`);
 			return pattern.test(expr.text);
@@ -458,21 +501,22 @@ function calledNode<T extends TS.Node>(
 	node: T,
 	callParent?: TS.Node,
 	original?: TS.Node,
-	isRegexPattern?: boolean
+	isRegex?: boolean
 ): CalledNode & T {
 	const cNode = node as CalledNode;
 	cNode.callParent = callParent as any;
 	cNode.original = original;
-	cNode.isRegexPattern = isRegexPattern;
+	cNode.isRegexPattern = isRegex;
 	return cNode as any;
 }
 
 function getNodeText(node: TS.Node) {
-	const text = node.getSourceFile().text;
+	const text = node.getSourceFile()?.text;
+	if (!text) return '<No Source>';
 	return text.substring(node.getStart(), node.getEnd());
 }
 
-function isRegexPattern(
+export function isRegexNode(
 	node: CalledNode
 ): node is TS.StringLiteral & CalledNode {
 	return node.isRegexPattern === true;

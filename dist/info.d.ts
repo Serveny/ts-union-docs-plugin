@@ -23,7 +23,9 @@ export declare class TypeInfoFactory {
     private ls;
     private checker;
     constructor(ts: typeof TS, ls: TS.LanguageService);
-    create(fileName: string, position: number): UnionInfo[] | null;
+    getTypeInfo(fileName: string, position: number): UnionInfo[] | null;
+    getContextualTypeInfo(fileName: string, position: number): UnionInfo | null;
+    private getInitNode;
     private findNodeAtPos;
     private getCallExpression;
     private getUnionParamtersInfo;
@@ -44,3 +46,4 @@ export declare class TypeInfoFactory {
     private cmp;
     private cmpLit;
 }
+export declare function isRegexNode(node: CalledNode): node is TS.StringLiteral & CalledNode;

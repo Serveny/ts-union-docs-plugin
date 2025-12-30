@@ -1,6 +1,7 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
 import { addExtraQuickInfo } from './docs';
 import { TypeInfoFactory } from './info';
+import { addTemplateCompletions } from './completion';
 
 export class UnionTypeDocsPlugin {
 	private logger!: TS.server.Logger;
@@ -26,7 +27,7 @@ export class UnionTypeDocsPlugin {
 		const quickInfo = this.ls.getQuickInfoAtPosition(fileName, pos);
 		if (!quickInfo) return quickInfo;
 
-		const typeInfo = this.typeInfoFactory.create(fileName, pos);
+		const typeInfo = this.typeInfoFactory.getTypeInfo(fileName, pos);
 		if (!typeInfo) return quickInfo;
 
 		addExtraQuickInfo(this.ts, quickInfo, typeInfo);
@@ -41,6 +42,12 @@ export class UnionTypeDocsPlugin {
 		fmt?: TS.FormatCodeSettings
 	): TS.WithMetadata<TS.CompletionInfo> | undefined {
 		const cmpl = this.ls.getCompletionsAtPosition(fileName, pos, opts, fmt);
+		if (!cmpl) return cmpl;
+
+		const typeInfo = this.typeInfoFactory.getContextualTypeInfo(fileName, pos);
+		if (!typeInfo) return cmpl;
+
+		addTemplateCompletions(this.ts, cmpl, typeInfo);
 
 		return cmpl;
 	}
