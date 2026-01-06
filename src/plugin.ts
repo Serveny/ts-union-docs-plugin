@@ -31,10 +31,7 @@ export class UnionTypeDocsPlugin {
 			if (!typeInfo) return quickInfo;
 			addExtraQuickInfo(this.ts, quickInfo, typeInfo);
 		} catch (err) {
-			this.logger.msg(
-				'[TS Union Docs Quick Info Error]: ' + JSON.stringify(err),
-				this.ts.server.Msg.Err
-			);
+			this.logErr('Quick Info', err);
 		}
 
 		return quickInfo;
@@ -56,12 +53,16 @@ export class UnionTypeDocsPlugin {
 			if (!typeInfo) return cmpl;
 			addTemplateCompletions(this.ts, cmpl, typeInfo);
 		} catch (err) {
-			this.logger.msg(
-				'[TS Union Docs Completion Error]: ' + JSON.stringify(err),
-				this.ts.server.Msg.Err
-			);
+			this.logErr('Completion', err);
 		}
 		return cmpl;
+	}
+
+	private logErr(at: string, err: unknown) {
+		this.logger.msg(
+			`[TS Union Docs ${at} Error]: ${errToString(err)}`,
+			this.ts.server.Msg.Err
+		);
 	}
 }
 
@@ -73,4 +74,10 @@ function createLsProxy(oldLs: TS.LanguageService): TS.LanguageService {
 		(proxy as any)[k] = typeof x === 'function' ? x.bind(oldLs) : x;
 	}
 	return proxy;
+}
+
+function errToString(err: unknown): string {
+	if (err instanceof Error) return `${err.message} | ${err.stack}`;
+	else if (typeof err === 'string') return err;
+	else return String(err);
 }
