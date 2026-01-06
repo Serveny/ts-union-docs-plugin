@@ -26,11 +26,16 @@ export class UnionTypeDocsPlugin {
 	private getQuickInfoAtPosition(fileName: string, pos: number) {
 		const quickInfo = this.ls.getQuickInfoAtPosition(fileName, pos);
 		if (!quickInfo) return quickInfo;
-
-		const typeInfo = this.typeInfoFactory.getTypeInfo(fileName, pos);
-		if (!typeInfo) return quickInfo;
-
-		addExtraQuickInfo(this.ts, quickInfo, typeInfo);
+		try {
+			const typeInfo = this.typeInfoFactory.getTypeInfo(fileName, pos);
+			if (!typeInfo) return quickInfo;
+			addExtraQuickInfo(this.ts, quickInfo, typeInfo);
+		} catch (err) {
+			this.logger.msg(
+				'[TS Union Docs Quick Info Error]: ' + JSON.stringify(err),
+				this.ts.server.Msg.Err
+			);
+		}
 
 		return quickInfo;
 	}
@@ -43,12 +48,19 @@ export class UnionTypeDocsPlugin {
 	): TS.WithMetadata<TS.CompletionInfo> | undefined {
 		const cmpl = this.ls.getCompletionsAtPosition(fileName, pos, opts, fmt);
 		if (!cmpl) return cmpl;
-
-		const typeInfo = this.typeInfoFactory.getContextualTypeInfo(fileName, pos);
-		if (!typeInfo) return cmpl;
-
-		addTemplateCompletions(this.ts, cmpl, typeInfo);
-
+		try {
+			const typeInfo = this.typeInfoFactory.getContextualTypeInfo(
+				fileName,
+				pos
+			);
+			if (!typeInfo) return cmpl;
+			addTemplateCompletions(this.ts, cmpl, typeInfo);
+		} catch (err) {
+			this.logger.msg(
+				'[TS Union Docs Completion Error]: ' + JSON.stringify(err),
+				this.ts.server.Msg.Err
+			);
+		}
 		return cmpl;
 	}
 }
