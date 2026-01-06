@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProxyFromCase, documentationToText } from './_test_setup';
+import { createProxyFromCase, documentationToText } from '../setup';
 
 const { proxy, absolutePath, code } = createProxyFromCase(
 	'tests/cases/union-type-var.ts'

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProxyFromCase, tagsToText } from './_test_setup';
+import { createProxyFromCase, tagsToText } from '../setup';
 
 const { proxy, absolutePath, code } = createProxyFromCase(
 	'tests/cases/nested-union-type-param.ts'

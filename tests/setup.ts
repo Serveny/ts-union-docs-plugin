@@ -57,7 +57,7 @@ export function createProxyFromCase(relativeFilePath: string) {
 	return { proxy, absolutePath, code };
 }
 
-export function tagsToText(quickInfo: ts.QuickInfo) {
+export function tagsToText(quickInfo: ts.QuickInfo): string | undefined {
 	return quickInfo.tags
 		?.map((tag) => tag.text?.map((t) => t.text)?.join(''))
 		.join('');
@@ -65,4 +65,12 @@ export function tagsToText(quickInfo: ts.QuickInfo) {
 
 export function documentationToText(quickInfo: ts.QuickInfo) {
 	return quickInfo.documentation?.map((tag) => tag.text).join('');
+}
+
+export function completionSnippetNames(
+	completionInfo: ts.CompletionInfo
+): string[] {
+	return completionInfo.entries
+		.filter((entry) => entry.isSnippet === true)
+		.map((entry) => entry.name);
 }
