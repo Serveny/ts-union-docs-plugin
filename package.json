@@ -28,7 +28,7 @@
         "watch": "vite",
         "refresh": "npm run build && cd ../example && npm i",
         "watch-and-refresh": "npx nodemon -w ./src -e ts -x \"npm run build && cd ../example && npm i\"",
-        "debug": "TSS_DEBUG=5667 code ../example --user-data-dir ~/.vscode-debug/",
+        "debug": "TSS_DEBUG=5667 code ../example --user-data-dir ~/.vscode-debug/ --disable-extensions",
         "test": "vitest run",
         "test:watch": "vitest",
         "test:ui": "vitest --ui"
