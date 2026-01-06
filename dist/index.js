@@ -473,23 +473,31 @@ function addTemplateCompletions(ts, completion, unionInfo) {
   completion.entries.sort();
 }
 function createTemplateCompletions(ts, unionInfo) {
+  const visitedNodes = /* @__PURE__ */ new Set();
   const entries = [];
   const templateNodes = unionInfo.entries.filter((n) => isRegexNode(n));
   if (templateNodes.length === 0) return entries;
   for (const tn of templateNodes) {
-    const name = displayName(tn.text);
+    const snippet = regexToSnippet(tn.text);
+    if (visitedNodes.has(snippet)) continue;
+    visitedNodes.add(snippet);
+    const name = replaceSnippetDefaults(snippet);
     entries.push({
       name,
       kind: ts.ScriptElementKind.string,
       sortText: name,
-      insertText: tn.text,
+      insertText: snippet,
       isSnippet: true
     });
   }
   return entries;
 }
-function displayName(snippet) {
-  return snippet.replace(/\$\{\d+\|([^,|]+).*?\|\}/g, "$1").replace(/\$\{\d+:([^}]+)\}/g, "$1").replace(/\$\d+|\$\{\d+\}/g, "");
+function regexToSnippet(snippet) {
+  let i = 1;
+  return snippet.replace(/\\d\+\(\\\.\\d\+\)\?/g, () => `\${${i++}:0}`).replace(/\(true\|false\)/g, () => `\${${i++}:false}`).replace(/\.\*/g, () => `\${${i++}:TEXT}`);
+}
+function replaceSnippetDefaults(str) {
+  return str.replace(/\$\{\d+:([^}]+)\}/g, "$1");
 }
 class UnionTypeDocsPlugin {
   constructor(ts) {
