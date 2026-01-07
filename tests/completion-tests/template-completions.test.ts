@@ -24,14 +24,14 @@ describe('Completion template type tests', () => {
 		const cursorPos = code.indexOf(`logPrettyColor('Pretty-red');`) + 11;
 		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
 		expect(result).toBeDefined();
-		expect(completionSnippetNames(result!)).toStrictEqual(['pretty-red-0']);
+		expect(completionSnippetNames(result!)).toStrictEqual(['Pretty-red-0']);
 	});
 
 	it('should suggest dynamic template types for variable', () => {
 		const cursorPos =
-			code.indexOf(`const prettyColor: PrettyColor = 'Pretty-red';`) + 23;
+			code.indexOf(`const prettyColor: PrettyColor = 'Pretty-red';`) + 35;
 		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
 		expect(result).toBeDefined();
-		expect(completionSnippetNames(result!)).toStrictEqual(['pretty-red-0']);
+		expect(completionSnippetNames(result!)).toStrictEqual(['Pretty-red-0']);
 	});
 });
