@@ -9,4 +9,5 @@ export declare class UnionTypeDocsPlugin {
     create(info: TS.server.PluginCreateInfo): TS.LanguageService;
     private getQuickInfoAtPosition;
     private getCompletionsAtPosition;
+    private logErr;
 }

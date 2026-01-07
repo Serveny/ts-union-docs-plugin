@@ -48,32 +48,9 @@ export class TypeInfoFactory {
 	}
 
 	getContextualTypeInfo(fileName: string, position: number): UnionInfo | null {
-		const node = this.getInitNode(fileName, position);
-		if (!node) return null;
-
-		let expr: TS.Expression | null = this.ts.isExpression(node) ? node : null;
-		if (!expr) {
-			let parent = node.parent;
-			while (parent && !this.ts.isExpression(parent)) parent = parent.parent;
-			expr = parent && this.ts.isExpression(parent) ? parent : null;
-		}
-		if (!expr) return null;
-
-		const contextualType = this.checker.getContextualType(expr);
-		if (!contextualType) return null;
-
-		const symbol = contextualType.getSymbol() || contextualType.aliasSymbol;
-		if (!symbol) return null;
-
-		const decl = symbol.getDeclarations();
-		if (!decl || decl.length === 0 || !this.ts.isTypeAliasDeclaration(decl[0]))
-			return null;
-
-		const tn = decl[0].type;
-		if (!tn) return null;
-
-		const unionMemberNodes = this.collectUnionMemberNodes(tn);
-		if (unionMemberNodes.length === 0) return null;
+		const type = this.getContextualType(fileName, position);
+		if (!type) return null;
+		const unionMemberNodes = this.collectUnionMemberNodes(type);
 
 		return new UnionInfo(
 			SupportedType.Variable,
@@ -81,51 +58,6 @@ export class TypeInfoFactory {
 			unionMemberNodes,
 			undefined
 		);
-	}
-
-	private getInitNode(fileName: string, position: number) {
-		const program = this.ls.getProgram();
-		if (!program) return null;
-
-		this.checker = program.getTypeChecker();
-		if (!this.checker) return null;
-
-		const source = program.getSourceFile(fileName);
-		if (!source) return null;
-
-		const node = this.findNodeAtPos(source, position);
-		if (!node) return null;
-
-		return node;
-	}
-
-	private findNodeAtPos(srcFile: TS.SourceFile, pos: number): TS.Node | null {
-		const find = (node: TS.Node): TS.Node | null =>
-			pos >= node.getStart() && pos < node.getEnd()
-				? this.ts.forEachChild(node, find) || node
-				: null;
-		return find(srcFile);
-	}
-
-	private getCallExpression(node: TS.Node): TS.CallExpression | null {
-		if (this.ts.isCallExpression(node)) return node;
-		while (node && !this.ts.isCallExpression(node)) node = node.parent;
-		return node;
-	}
-
-	private getUnionParamtersInfo(callExpr: TS.CallExpression): UnionInfo[] {
-		const paramTypes: UnionInfo[] = [];
-		const signature = this.checker.getResolvedSignature(callExpr);
-		if (!signature) return paramTypes;
-
-		const args = callExpr.arguments;
-		const params = signature.getParameters();
-		for (let i = 0; i < params.length; i++) {
-			const paramInfo = this.getUnionInfo(params[i], args[i]);
-			if (paramInfo) paramTypes.push(paramInfo);
-		}
-
-		return paramTypes;
 	}
 
 	private getUnionInfo(
@@ -175,6 +107,135 @@ export class TypeInfoFactory {
 			valueNodes,
 			value
 		);
+	}
+
+	private getContextualType(
+		fileName: string,
+		position: number
+	): TS.TypeNode | null {
+		const node = this.getInitNode(fileName, position);
+		if (!node) return null;
+
+		return (
+			this.getTypeNodeFromExpression(node) ??
+			this.getTypeFromCallExpression(node, position) ??
+			this.getTypeNodeAtOrAbove(node) ??
+			null
+		);
+	}
+
+	private getInitNode(fileName: string, position: number) {
+		const program = this.ls.getProgram();
+		if (!program) return null;
+
+		this.checker = program.getTypeChecker();
+		if (!this.checker) return null;
+
+		const source = program.getSourceFile(fileName);
+		if (!source) return null;
+
+		const node = this.findNodeAtPos(source, position);
+		if (!node) return null;
+
+		return node;
+	}
+
+	private findNodeAtPos(srcFile: TS.SourceFile, pos: number): TS.Node | null {
+		const find = (node: TS.Node): TS.Node | null =>
+			pos >= node.getStart() && pos < node.getEnd()
+				? this.ts.forEachChild(node, find) || node
+				: null;
+		return find(srcFile);
+	}
+
+	private getCallExpression(node: TS.Node): TS.CallExpression | null {
+		if (this.ts.isCallExpression(node)) return node;
+		while (node && !this.ts.isCallExpression(node)) node = node.parent;
+		return node;
+	}
+
+	private getTypeNodeFromExpression(node: TS.Node): TS.TypeNode | null {
+		const expr = this.getExpressionFromNode(node);
+		if (!expr) return null;
+		const contextualType = this.checker.getContextualType(expr) ?? null;
+		if (!contextualType) return null;
+
+		return this.getTypeNodeFromType(contextualType) ?? null;
+	}
+
+	private getTypeFromCallExpression(
+		node: TS.Node,
+		position: number
+	): TS.TypeNode | null {
+		const expr = this.getCallExpression(node);
+		if (!expr || expr.arguments.length === 0) return null;
+
+		const argAtPos = expr.arguments.find(
+			(arg) => position >= arg.getStart() && position < arg.getEnd()
+		);
+		const arg = argAtPos ?? expr.arguments[0];
+
+		const signature = this.checker.getResolvedSignature(expr);
+		if (!signature) return null;
+
+		const params = signature.getParameters();
+		const argIndex = expr.arguments.indexOf(arg);
+		const paramSymbol = params[argIndex];
+		if (!paramSymbol) return null;
+
+		const decl = paramSymbol.valueDeclaration;
+		if (!decl || !this.ts.isParameter(decl) || !decl.type) return null;
+
+		return decl.type;
+	}
+
+	private getExpressionFromNode(node: TS.Node): TS.Expression | null {
+		if (this.ts.isExpression(node)) return node;
+		let parent = node.parent;
+		while (parent && !this.ts.isExpression(parent)) parent = parent.parent;
+		return parent && this.ts.isExpression(parent) ? parent : null;
+	}
+
+	private getTypeNodeAtOrAbove(node: TS.Node): TS.TypeNode | null {
+		let current: TS.Node | undefined = node;
+		while (current) {
+			if (this.ts.isTypeNode(current)) return current;
+			current = current.parent;
+		}
+		return null;
+	}
+
+	private getTypeNodeFromType(type: TS.Type): TS.TypeNode | undefined {
+		const symbol = type.aliasSymbol ?? type.getSymbol();
+		if (symbol) {
+			const decl = symbol.getDeclarations();
+			const aliasDecl = decl?.find((d): d is TS.TypeAliasDeclaration =>
+				this.ts.isTypeAliasDeclaration(d)
+			);
+			if (aliasDecl?.type) return aliasDecl.type;
+		}
+		return this.checker.typeToTypeNode(
+			type,
+			undefined,
+			this.ts.NodeBuilderFlags.NoTruncation |
+				this.ts.NodeBuilderFlags.InTypeAlias |
+				this.ts.NodeBuilderFlags.IgnoreErrors
+		);
+	}
+
+	private getUnionParamtersInfo(callExpr: TS.CallExpression): UnionInfo[] {
+		const paramTypes: UnionInfo[] = [];
+		const signature = this.checker.getResolvedSignature(callExpr);
+		if (!signature) return paramTypes;
+
+		const args = callExpr.arguments;
+		const params = signature.getParameters();
+		for (let i = 0; i < params.length; i++) {
+			const paramInfo = this.getUnionInfo(params[i], args[i]);
+			if (paramInfo) paramTypes.push(paramInfo);
+		}
+
+		return paramTypes;
 	}
 
 	private getValue(expr: TS.Expression): string {
@@ -413,7 +474,7 @@ export class TypeInfoFactory {
 				// string (caution: greedy)
 				else if (tn.kind === ts.SyntaxKind.StringKeyword)
 					spanNodes.push(
-						this.createLiteralNode(tn, '.*' + span.literal.text, node, true)
+						this.createLiteralNode(tn, '\\.\\*' + span.literal.text, node, true)
 					);
 				// Fallback for unknown types
 				else console.warn('Unknown type of template: ', tn);

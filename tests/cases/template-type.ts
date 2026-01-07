@@ -1,4 +1,4 @@
-type Brightness = 'dark' | 'bright';
+type Brightness = 'dark' | 'bright' | 'regex/[.*+?^${}()|[]-]/g';
 type Color = 'red' | `red-${Brightness}` | `red-${number}`;
 
 // ===================

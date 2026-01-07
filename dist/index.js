@@ -30,64 +30,15 @@ class TypeInfoFactory {
     return null;
   }
   getContextualTypeInfo(fileName, position) {
-    const node = this.getInitNode(fileName, position);
-    if (!node) return null;
-    let expr = this.ts.isExpression(node) ? node : null;
-    if (!expr) {
-      let parent = node.parent;
-      while (parent && !this.ts.isExpression(parent)) parent = parent.parent;
-      expr = parent && this.ts.isExpression(parent) ? parent : null;
-    }
-    if (!expr) return null;
-    const contextualType = this.checker.getContextualType(expr);
-    if (!contextualType) return null;
-    const symbol = contextualType.getSymbol() || contextualType.aliasSymbol;
-    if (!symbol) return null;
-    const decl = symbol.getDeclarations();
-    if (!decl || decl.length === 0 || !this.ts.isTypeAliasDeclaration(decl[0]))
-      return null;
-    const tn = decl[0].type;
-    if (!tn) return null;
-    const unionMemberNodes = this.collectUnionMemberNodes(tn);
-    if (unionMemberNodes.length === 0) return null;
+    const type = this.getContextualType(fileName, position);
+    if (!type) return null;
+    const unionMemberNodes = this.collectUnionMemberNodes(type);
     return new UnionInfo(
       1,
       "completion",
       unionMemberNodes,
       void 0
     );
-  }
-  getInitNode(fileName, position) {
-    const program = this.ls.getProgram();
-    if (!program) return null;
-    this.checker = program.getTypeChecker();
-    if (!this.checker) return null;
-    const source = program.getSourceFile(fileName);
-    if (!source) return null;
-    const node = this.findNodeAtPos(source, position);
-    if (!node) return null;
-    return node;
-  }
-  findNodeAtPos(srcFile, pos) {
-    const find = (node) => pos >= node.getStart() && pos < node.getEnd() ? this.ts.forEachChild(node, find) || node : null;
-    return find(srcFile);
-  }
-  getCallExpression(node) {
-    if (this.ts.isCallExpression(node)) return node;
-    while (node && !this.ts.isCallExpression(node)) node = node.parent;
-    return node;
-  }
-  getUnionParamtersInfo(callExpr) {
-    const paramTypes = [];
-    const signature = this.checker.getResolvedSignature(callExpr);
-    if (!signature) return paramTypes;
-    const args = callExpr.arguments;
-    const params = signature.getParameters();
-    for (let i = 0; i < params.length; i++) {
-      const paramInfo = this.getUnionInfo(params[i], args[i]);
-      if (paramInfo) paramTypes.push(paramInfo);
-    }
-    return paramTypes;
   }
   getUnionInfo(paramSymbol, arg) {
     const decl = paramSymbol.valueDeclaration;
@@ -120,6 +71,96 @@ class TypeInfoFactory {
       valueNodes,
       value
     );
+  }
+  getContextualType(fileName, position) {
+    const node = this.getInitNode(fileName, position);
+    if (!node) return null;
+    return this.getTypeNodeFromExpression(node) ?? this.getTypeFromCallExpression(node, position) ?? this.getTypeNodeAtOrAbove(node) ?? null;
+  }
+  getInitNode(fileName, position) {
+    const program = this.ls.getProgram();
+    if (!program) return null;
+    this.checker = program.getTypeChecker();
+    if (!this.checker) return null;
+    const source = program.getSourceFile(fileName);
+    if (!source) return null;
+    const node = this.findNodeAtPos(source, position);
+    if (!node) return null;
+    return node;
+  }
+  findNodeAtPos(srcFile, pos) {
+    const find = (node) => pos >= node.getStart() && pos < node.getEnd() ? this.ts.forEachChild(node, find) || node : null;
+    return find(srcFile);
+  }
+  getCallExpression(node) {
+    if (this.ts.isCallExpression(node)) return node;
+    while (node && !this.ts.isCallExpression(node)) node = node.parent;
+    return node;
+  }
+  getTypeNodeFromExpression(node) {
+    const expr = this.getExpressionFromNode(node);
+    if (!expr) return null;
+    const contextualType = this.checker.getContextualType(expr) ?? null;
+    if (!contextualType) return null;
+    return this.getTypeNodeFromType(contextualType) ?? null;
+  }
+  getTypeFromCallExpression(node, position) {
+    const expr = this.getCallExpression(node);
+    if (!expr || expr.arguments.length === 0) return null;
+    const argAtPos = expr.arguments.find(
+      (arg2) => position >= arg2.getStart() && position < arg2.getEnd()
+    );
+    const arg = argAtPos ?? expr.arguments[0];
+    const signature = this.checker.getResolvedSignature(expr);
+    if (!signature) return null;
+    const params = signature.getParameters();
+    const argIndex = expr.arguments.indexOf(arg);
+    const paramSymbol = params[argIndex];
+    if (!paramSymbol) return null;
+    const decl = paramSymbol.valueDeclaration;
+    if (!decl || !this.ts.isParameter(decl) || !decl.type) return null;
+    return decl.type;
+  }
+  getExpressionFromNode(node) {
+    if (this.ts.isExpression(node)) return node;
+    let parent = node.parent;
+    while (parent && !this.ts.isExpression(parent)) parent = parent.parent;
+    return parent && this.ts.isExpression(parent) ? parent : null;
+  }
+  getTypeNodeAtOrAbove(node) {
+    let current = node;
+    while (current) {
+      if (this.ts.isTypeNode(current)) return current;
+      current = current.parent;
+    }
+    return null;
+  }
+  getTypeNodeFromType(type) {
+    const symbol = type.aliasSymbol ?? type.getSymbol();
+    if (symbol) {
+      const decl = symbol.getDeclarations();
+      const aliasDecl = decl?.find(
+        (d) => this.ts.isTypeAliasDeclaration(d)
+      );
+      if (aliasDecl?.type) return aliasDecl.type;
+    }
+    return this.checker.typeToTypeNode(
+      type,
+      void 0,
+      this.ts.NodeBuilderFlags.NoTruncation | this.ts.NodeBuilderFlags.InTypeAlias | this.ts.NodeBuilderFlags.IgnoreErrors
+    );
+  }
+  getUnionParamtersInfo(callExpr) {
+    const paramTypes = [];
+    const signature = this.checker.getResolvedSignature(callExpr);
+    if (!signature) return paramTypes;
+    const args = callExpr.arguments;
+    const params = signature.getParameters();
+    for (let i = 0; i < params.length; i++) {
+      const paramInfo = this.getUnionInfo(params[i], args[i]);
+      if (paramInfo) paramTypes.push(paramInfo);
+    }
+    return paramTypes;
   }
   getValue(expr) {
     return this.ts.isLiteralExpression(expr) ? expr.text : expr.getText();
@@ -272,7 +313,7 @@ class TypeInfoFactory {
           );
         else if (tn.kind === ts.SyntaxKind.StringKeyword)
           spanNodes.push(
-            this.createLiteralNode(tn, ".*" + span.literal.text, node, true)
+            this.createLiteralNode(tn, "\\.\\*" + span.literal.text, node, true)
           );
         else console.warn("Unknown type of template: ", tn);
       }
@@ -469,6 +510,7 @@ function prepareJSDocText(rawComment) {
 function addTemplateCompletions(ts, completion, unionInfo) {
   const entries = createTemplateCompletions(ts, unionInfo);
   if (entries.length === 0) return;
+  completion.optionalReplacementSpan;
   completion.entries.push(...entries);
   completion.entries.sort();
 }
@@ -499,6 +541,14 @@ function regexToSnippet(snippet) {
 function replaceSnippetDefaults(str) {
   return str.replace(/\$\{\d+:([^}]+)\}/g, "$1");
 }
+function defaultComplInfo() {
+  return {
+    isGlobalCompletion: false,
+    isMemberCompletion: false,
+    isNewIdentifierLocation: false,
+    entries: []
+  };
+}
 class UnionTypeDocsPlugin {
   constructor(ts) {
     this.ts = ts;
@@ -516,18 +566,34 @@ class UnionTypeDocsPlugin {
   getQuickInfoAtPosition(fileName, pos) {
     const quickInfo = this.ls.getQuickInfoAtPosition(fileName, pos);
     if (!quickInfo) return quickInfo;
-    const typeInfo = this.typeInfoFactory.getTypeInfo(fileName, pos);
-    if (!typeInfo) return quickInfo;
-    addExtraQuickInfo(this.ts, quickInfo, typeInfo);
+    try {
+      const typeInfo = this.typeInfoFactory.getTypeInfo(fileName, pos);
+      if (!typeInfo) return quickInfo;
+      addExtraQuickInfo(this.ts, quickInfo, typeInfo);
+    } catch (err) {
+      this.logErr("Quick Info", err);
+    }
     return quickInfo;
   }
   getCompletionsAtPosition(fileName, pos, opts, fmt) {
-    const cmpl = this.ls.getCompletionsAtPosition(fileName, pos, opts, fmt);
-    if (!cmpl) return cmpl;
-    const typeInfo = this.typeInfoFactory.getContextualTypeInfo(fileName, pos);
-    if (!typeInfo) return cmpl;
-    addTemplateCompletions(this.ts, cmpl, typeInfo);
+    const cmpl = this.ls.getCompletionsAtPosition(fileName, pos, opts, fmt) ?? defaultComplInfo();
+    try {
+      const typeInfo = this.typeInfoFactory.getContextualTypeInfo(
+        fileName,
+        pos
+      );
+      if (!typeInfo) return cmpl;
+      addTemplateCompletions(this.ts, cmpl, typeInfo);
+    } catch (err) {
+      this.logErr("Completion", err);
+    }
     return cmpl;
+  }
+  logErr(at, err) {
+    this.logger.msg(
+      `[TS Union Docs ${at} Error]: ${errToString(err)}`,
+      this.ts.server.Msg.Err
+    );
   }
 }
 function createLsProxy(oldLs) {
@@ -537,6 +603,11 @@ function createLsProxy(oldLs) {
     proxy[k] = typeof x === "function" ? x.bind(oldLs) : x;
   }
   return proxy;
+}
+function errToString(err) {
+  if (err instanceof Error) return `${err.message} | ${err.stack}`;
+  else if (typeof err === "string") return err;
+  else return String(err);
 }
 module.exports = (mod) => new UnionTypeDocsPlugin(mod.typescript);
 //# sourceMappingURL=index.js.map

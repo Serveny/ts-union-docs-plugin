@@ -9,6 +9,7 @@ export function addTemplateCompletions(
 	const entries = createTemplateCompletions(ts, unionInfo);
 	if (entries.length === 0) return;
 
+	completion.optionalReplacementSpan;
 	completion.entries.push(...entries);
 	completion.entries.sort();
 }
@@ -53,4 +54,13 @@ function regexToSnippet(snippet: string): string {
 // Replace snippet syntax with default value
 function replaceSnippetDefaults(str: string): string {
 	return str.replace(/\$\{\d+:([^}]+)\}/g, '$1');
+}
+
+export function defaultComplInfo(): TS.CompletionInfo {
+	return {
+		isGlobalCompletion: false,
+		isMemberCompletion: false,
+		isNewIdentifierLocation: false,
+		entries: [],
+	};
 }

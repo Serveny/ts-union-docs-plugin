@@ -47,6 +47,7 @@ describe('Completion template type test 3', () => {
 			'Pretty-0-red',
 			'Pretty-0-red-dark',
 			'Pretty-0-red-bright',
+			'Pretty-0-red-regex/[.*+?^${}()|[]-]/g',
 			'Pretty-0-red-0',
 		]);
 	});
@@ -60,6 +61,7 @@ describe('Completion template type test 3', () => {
 			'Pretty-0-red',
 			'Pretty-0-red-dark',
 			'Pretty-0-red-bright',
+			'Pretty-0-red-regex/[.*+?^${}()|[]-]/g',
 			'Pretty-0-red-0',
 		]);
 	});

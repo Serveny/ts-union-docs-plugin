@@ -1,7 +1,7 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
 import { addExtraQuickInfo } from './docs';
 import { TypeInfoFactory } from './info';
-import { addTemplateCompletions } from './completion';
+import { addTemplateCompletions, defaultComplInfo } from './completion';
 
 export class UnionTypeDocsPlugin {
 	private logger!: TS.server.Logger;
@@ -43,8 +43,9 @@ export class UnionTypeDocsPlugin {
 		opts: TS.GetCompletionsAtPositionOptions | undefined,
 		fmt?: TS.FormatCodeSettings
 	): TS.WithMetadata<TS.CompletionInfo> | undefined {
-		const cmpl = this.ls.getCompletionsAtPosition(fileName, pos, opts, fmt);
-		if (!cmpl) return cmpl;
+		const cmpl =
+			this.ls.getCompletionsAtPosition(fileName, pos, opts, fmt) ??
+			defaultComplInfo();
 		try {
 			const typeInfo = this.typeInfoFactory.getContextualTypeInfo(
 				fileName,
