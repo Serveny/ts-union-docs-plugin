@@ -10,6 +10,7 @@ export class UnionInfo {
 	constructor(
 		public type: SupportedType,
 		public name: string,
+		public initNode: CalledNode,
 		// Can be multiple nodes because different union types can have same values
 		public entries: CalledNode[],
 		public value?: string,
@@ -48,16 +49,58 @@ export class TypeInfoFactory {
 	}
 
 	getContextualTypeInfo(fileName: string, position: number): UnionInfo | null {
-		const type = this.getContextualType(fileName, position);
-		if (!type) return null;
-		const unionMemberNodes = this.collectUnionMemberNodes(type);
+		const node = this.getInitNode(fileName, position);
+		if (!node || !this.ts.isExpression(node)) return null;
+
+		const contextualType = this.checker.getContextualType(node);
+		if (!contextualType) return null;
+
+		let typeNode: TS.TypeNode | null = null;
+		if (contextualType.aliasSymbol) {
+			const decl = contextualType.aliasSymbol.getDeclarations()?.[0];
+			if (decl && this.ts.isTypeAliasDeclaration(decl)) {
+				typeNode = decl.type;
+			}
+		} else {
+			const callLikeParent = this.findCallLikeExpression(node);
+			if (callLikeParent) {
+				const signature = this.checker.getResolvedSignature(callLikeParent);
+				if (signature && callLikeParent.arguments) {
+					const argIndex = callLikeParent.arguments.indexOf(node);
+					const parameterSymbol = signature.getParameters()[argIndex];
+
+					if (parameterSymbol) {
+						const paramDecl = parameterSymbol.getDeclarations()?.[0];
+						if (paramDecl && this.ts.isParameter(paramDecl)) {
+							typeNode = paramDecl.type ?? null;
+						}
+					}
+				}
+			}
+		}
+		if (!typeNode) return null;
+
+		const unionMemberNodes = this.collectUnionMemberNodes(typeNode);
 
 		return new UnionInfo(
 			SupportedType.Variable,
 			'completion',
+			node,
 			unionMemberNodes,
 			undefined
 		);
+	}
+
+	private findCallLikeExpression(
+		node: TS.Node
+	): TS.CallExpression | TS.NewExpression | undefined {
+		let current = node.parent;
+		while (current && !this.ts.isSourceFile(current)) {
+			if (this.ts.isCallExpression(current) || this.ts.isNewExpression(current))
+				return current;
+			current = current.parent;
+		}
+		return undefined;
 	}
 
 	private getUnionInfo(
@@ -76,6 +119,7 @@ export class TypeInfoFactory {
 		return new UnionInfo(
 			SupportedType.Paramter,
 			paramSymbol.name,
+			decl.type,
 			valueNodes,
 			value
 		);
@@ -104,23 +148,9 @@ export class TypeInfoFactory {
 		return new UnionInfo(
 			SupportedType.Variable,
 			symbol.name,
+			decl.type,
 			valueNodes,
 			value
-		);
-	}
-
-	private getContextualType(
-		fileName: string,
-		position: number
-	): TS.TypeNode | null {
-		const node = this.getInitNode(fileName, position);
-		if (!node) return null;
-
-		return (
-			this.getTypeNodeFromExpression(node) ??
-			this.getTypeFromCallExpression(node, position) ??
-			this.getTypeNodeAtOrAbove(node) ??
-			null
 		);
 	}
 
@@ -152,75 +182,6 @@ export class TypeInfoFactory {
 		if (this.ts.isCallExpression(node)) return node;
 		while (node && !this.ts.isCallExpression(node)) node = node.parent;
 		return node;
-	}
-
-	private getTypeNodeFromExpression(node: TS.Node): TS.TypeNode | null {
-		const expr = this.getExpressionFromNode(node);
-		if (!expr) return null;
-		const contextualType = this.checker.getContextualType(expr) ?? null;
-		if (!contextualType) return null;
-
-		return this.getTypeNodeFromType(contextualType) ?? null;
-	}
-
-	private getTypeFromCallExpression(
-		node: TS.Node,
-		position: number
-	): TS.TypeNode | null {
-		const expr = this.getCallExpression(node);
-		if (!expr || expr.arguments.length === 0) return null;
-
-		const argAtPos = expr.arguments.find(
-			(arg) => position >= arg.getStart() && position < arg.getEnd()
-		);
-		const arg = argAtPos ?? expr.arguments[0];
-
-		const signature = this.checker.getResolvedSignature(expr);
-		if (!signature) return null;
-
-		const params = signature.getParameters();
-		const argIndex = expr.arguments.indexOf(arg);
-		const paramSymbol = params[argIndex];
-		if (!paramSymbol) return null;
-
-		const decl = paramSymbol.valueDeclaration;
-		if (!decl || !this.ts.isParameter(decl) || !decl.type) return null;
-
-		return decl.type;
-	}
-
-	private getExpressionFromNode(node: TS.Node): TS.Expression | null {
-		if (this.ts.isExpression(node)) return node;
-		let parent = node.parent;
-		while (parent && !this.ts.isExpression(parent)) parent = parent.parent;
-		return parent && this.ts.isExpression(parent) ? parent : null;
-	}
-
-	private getTypeNodeAtOrAbove(node: TS.Node): TS.TypeNode | null {
-		let current: TS.Node | undefined = node;
-		while (current) {
-			if (this.ts.isTypeNode(current)) return current;
-			current = current.parent;
-		}
-		return null;
-	}
-
-	private getTypeNodeFromType(type: TS.Type): TS.TypeNode | undefined {
-		const symbol = type.aliasSymbol ?? type.getSymbol();
-		if (symbol) {
-			const decl = symbol.getDeclarations();
-			const aliasDecl = decl?.find((d): d is TS.TypeAliasDeclaration =>
-				this.ts.isTypeAliasDeclaration(d)
-			);
-			if (aliasDecl?.type) return aliasDecl.type;
-		}
-		return this.checker.typeToTypeNode(
-			type,
-			undefined,
-			this.ts.NodeBuilderFlags.NoTruncation |
-				this.ts.NodeBuilderFlags.InTypeAlias |
-				this.ts.NodeBuilderFlags.IgnoreErrors
-		);
 	}
 
 	private getUnionParamtersInfo(callExpr: TS.CallExpression): UnionInfo[] {

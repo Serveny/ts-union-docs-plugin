@@ -5,9 +5,10 @@ var SupportedType = /* @__PURE__ */ ((SupportedType2) => {
   return SupportedType2;
 })(SupportedType || {});
 class UnionInfo {
-  constructor(type, name, entries, value, docComment) {
+  constructor(type, name, initNode, entries, value, docComment) {
     this.type = type;
     this.name = name;
+    this.initNode = initNode;
     this.entries = entries;
     this.value = value;
     this.docComment = docComment;
@@ -30,15 +31,50 @@ class TypeInfoFactory {
     return null;
   }
   getContextualTypeInfo(fileName, position) {
-    const type = this.getContextualType(fileName, position);
-    if (!type) return null;
-    const unionMemberNodes = this.collectUnionMemberNodes(type);
+    const node = this.getInitNode(fileName, position);
+    if (!node || !this.ts.isExpression(node)) return null;
+    const contextualType = this.checker.getContextualType(node);
+    if (!contextualType) return null;
+    let typeNode = null;
+    if (contextualType.aliasSymbol) {
+      const decl = contextualType.aliasSymbol.getDeclarations()?.[0];
+      if (decl && this.ts.isTypeAliasDeclaration(decl)) {
+        typeNode = decl.type;
+      }
+    } else {
+      const callLikeParent = this.findCallLikeExpression(node);
+      if (callLikeParent) {
+        const signature = this.checker.getResolvedSignature(callLikeParent);
+        if (signature && callLikeParent.arguments) {
+          const argIndex = callLikeParent.arguments.indexOf(node);
+          const parameterSymbol = signature.getParameters()[argIndex];
+          if (parameterSymbol) {
+            const paramDecl = parameterSymbol.getDeclarations()?.[0];
+            if (paramDecl && this.ts.isParameter(paramDecl)) {
+              typeNode = paramDecl.type ?? null;
+            }
+          }
+        }
+      }
+    }
+    if (!typeNode) return null;
+    const unionMemberNodes = this.collectUnionMemberNodes(typeNode);
     return new UnionInfo(
       1,
       "completion",
+      node,
       unionMemberNodes,
       void 0
     );
+  }
+  findCallLikeExpression(node) {
+    let current = node.parent;
+    while (current && !this.ts.isSourceFile(current)) {
+      if (this.ts.isCallExpression(current) || this.ts.isNewExpression(current))
+        return current;
+      current = current.parent;
+    }
+    return void 0;
   }
   getUnionInfo(paramSymbol, arg) {
     const decl = paramSymbol.valueDeclaration;
@@ -50,6 +86,7 @@ class TypeInfoFactory {
     return new UnionInfo(
       0,
       paramSymbol.name,
+      decl.type,
       valueNodes,
       value
     );
@@ -68,14 +105,10 @@ class TypeInfoFactory {
     return new UnionInfo(
       1,
       symbol.name,
+      decl.type,
       valueNodes,
       value
     );
-  }
-  getContextualType(fileName, position) {
-    const node = this.getInitNode(fileName, position);
-    if (!node) return null;
-    return this.getTypeNodeFromExpression(node) ?? this.getTypeFromCallExpression(node, position) ?? this.getTypeNodeAtOrAbove(node) ?? null;
   }
   getInitNode(fileName, position) {
     const program = this.ls.getProgram();
@@ -96,59 +129,6 @@ class TypeInfoFactory {
     if (this.ts.isCallExpression(node)) return node;
     while (node && !this.ts.isCallExpression(node)) node = node.parent;
     return node;
-  }
-  getTypeNodeFromExpression(node) {
-    const expr = this.getExpressionFromNode(node);
-    if (!expr) return null;
-    const contextualType = this.checker.getContextualType(expr) ?? null;
-    if (!contextualType) return null;
-    return this.getTypeNodeFromType(contextualType) ?? null;
-  }
-  getTypeFromCallExpression(node, position) {
-    const expr = this.getCallExpression(node);
-    if (!expr || expr.arguments.length === 0) return null;
-    const argAtPos = expr.arguments.find(
-      (arg2) => position >= arg2.getStart() && position < arg2.getEnd()
-    );
-    const arg = argAtPos ?? expr.arguments[0];
-    const signature = this.checker.getResolvedSignature(expr);
-    if (!signature) return null;
-    const params = signature.getParameters();
-    const argIndex = expr.arguments.indexOf(arg);
-    const paramSymbol = params[argIndex];
-    if (!paramSymbol) return null;
-    const decl = paramSymbol.valueDeclaration;
-    if (!decl || !this.ts.isParameter(decl) || !decl.type) return null;
-    return decl.type;
-  }
-  getExpressionFromNode(node) {
-    if (this.ts.isExpression(node)) return node;
-    let parent = node.parent;
-    while (parent && !this.ts.isExpression(parent)) parent = parent.parent;
-    return parent && this.ts.isExpression(parent) ? parent : null;
-  }
-  getTypeNodeAtOrAbove(node) {
-    let current = node;
-    while (current) {
-      if (this.ts.isTypeNode(current)) return current;
-      current = current.parent;
-    }
-    return null;
-  }
-  getTypeNodeFromType(type) {
-    const symbol = type.aliasSymbol ?? type.getSymbol();
-    if (symbol) {
-      const decl = symbol.getDeclarations();
-      const aliasDecl = decl?.find(
-        (d) => this.ts.isTypeAliasDeclaration(d)
-      );
-      if (aliasDecl?.type) return aliasDecl.type;
-    }
-    return this.checker.typeToTypeNode(
-      type,
-      void 0,
-      this.ts.NodeBuilderFlags.NoTruncation | this.ts.NodeBuilderFlags.InTypeAlias | this.ts.NodeBuilderFlags.IgnoreErrors
-    );
   }
   getUnionParamtersInfo(callExpr) {
     const paramTypes = [];
@@ -322,7 +302,8 @@ class TypeInfoFactory {
     const catProd = cartesianProduct(nodes).flatMap((compNodes) => {
       const isRegex = compNodes.some((n) => n.isRegexPattern === true);
       const txt = (n) => isRegex && n.isRegexPattern === false ? escapeRegExp(n.text) : n.text;
-      let fullText = headText + compNodes.map(txt).join("");
+      const head = isRegex ? escapeRegExp(headText) : headText;
+      const fullText = head + compNodes.map(txt).join("");
       return compNodes.map(
         (cn) => this.createLiteralNode(cn, fullText, cn.callParent, isRegex)
       );
@@ -510,15 +491,14 @@ function prepareJSDocText(rawComment) {
 function addTemplateCompletions(ts, completion, unionInfo) {
   const entries = createTemplateCompletions(ts, unionInfo);
   if (entries.length === 0) return;
-  completion.optionalReplacementSpan;
   completion.entries.push(...entries);
-  completion.entries.sort();
 }
 function createTemplateCompletions(ts, unionInfo) {
   const visitedNodes = /* @__PURE__ */ new Set();
   const entries = [];
   const templateNodes = unionInfo.entries.filter((n) => isRegexNode(n));
   if (templateNodes.length === 0) return entries;
+  const replacementSpan = getNodeTextSpan(unionInfo.initNode);
   for (const tn of templateNodes) {
     const snippet = regexToSnippet(tn.text);
     if (visitedNodes.has(snippet)) continue;
@@ -529,14 +509,15 @@ function createTemplateCompletions(ts, unionInfo) {
       kind: ts.ScriptElementKind.string,
       sortText: name,
       insertText: snippet,
-      isSnippet: true
+      isSnippet: true,
+      replacementSpan
     });
   }
   return entries;
 }
 function regexToSnippet(snippet) {
   let i = 1;
-  return snippet.replace(/\\d\+\(\\\.\\d\+\)\?/g, () => `\${${i++}:0}`).replace(/\(true\|false\)/g, () => `\${${i++}:false}`).replace(/\.\*/g, () => `\${${i++}:TEXT}`);
+  return snippet.replace(/\\d\+\(\\\.\\d\+\)\?/g, () => `\${${i++}:0}`).replace(/\(true\|false\)/g, () => `\${${i++}:false}`).replace(/\.\*/g, () => `\${${i++}:TEXT}`).replace(/\\/g, "");
 }
 function replaceSnippetDefaults(str) {
   return str.replace(/\$\{\d+:([^}]+)\}/g, "$1");
@@ -547,6 +528,13 @@ function defaultComplInfo() {
     isMemberCompletion: false,
     isNewIdentifierLocation: false,
     entries: []
+  };
+}
+function getNodeTextSpan(node) {
+  const start = node.getStart() + 1;
+  return {
+    start,
+    length: node.getWidth() - 2
   };
 }
 class UnionTypeDocsPlugin {

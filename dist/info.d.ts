@@ -6,10 +6,11 @@ export declare enum SupportedType {
 export declare class UnionInfo {
     type: SupportedType;
     name: string;
+    initNode: CalledNode;
     entries: CalledNode[];
     value?: string | undefined;
     docComment?: string[] | undefined;
-    constructor(type: SupportedType, name: string, entries: CalledNode[], value?: string | undefined, docComment?: string[] | undefined);
+    constructor(type: SupportedType, name: string, initNode: CalledNode, entries: CalledNode[], value?: string | undefined, docComment?: string[] | undefined);
 }
 export interface CalledNode extends TS.Node {
     id?: number;
@@ -25,17 +26,12 @@ export declare class TypeInfoFactory {
     constructor(ts: typeof TS, ls: TS.LanguageService);
     getTypeInfo(fileName: string, position: number): UnionInfo[] | null;
     getContextualTypeInfo(fileName: string, position: number): UnionInfo | null;
+    private findCallLikeExpression;
     private getUnionInfo;
     private getUnionVariableInfo;
-    private getContextualType;
     private getInitNode;
     private findNodeAtPos;
     private getCallExpression;
-    private getTypeNodeFromExpression;
-    private getTypeFromCallExpression;
-    private getExpressionFromNode;
-    private getTypeNodeAtOrAbove;
-    private getTypeNodeFromType;
     private getUnionParamtersInfo;
     private getValue;
     private collectUnionMemberNodes;

@@ -9,9 +9,7 @@ export function addTemplateCompletions(
 	const entries = createTemplateCompletions(ts, unionInfo);
 	if (entries.length === 0) return;
 
-	completion.optionalReplacementSpan;
 	completion.entries.push(...entries);
-	completion.entries.sort();
 }
 
 function createTemplateCompletions(
@@ -23,6 +21,7 @@ function createTemplateCompletions(
 	const entries: TS.CompletionEntry[] = [];
 	const templateNodes = unionInfo.entries.filter((n) => isRegexNode(n));
 	if (templateNodes.length === 0) return entries;
+	const replacementSpan = getNodeTextSpan(unionInfo.initNode);
 
 	for (const tn of templateNodes) {
 		const snippet = regexToSnippet(tn.text);
@@ -36,6 +35,7 @@ function createTemplateCompletions(
 			sortText: name,
 			insertText: snippet,
 			isSnippet: true,
+			replacementSpan,
 		});
 	}
 
@@ -48,7 +48,8 @@ function regexToSnippet(snippet: string): string {
 	return snippet
 		.replace(/\\d\+\(\\\.\\d\+\)\?/g, () => `\${${i++}:0}`)
 		.replace(/\(true\|false\)/g, () => `\${${i++}:false}`)
-		.replace(/\.\*/g, () => `\${${i++}:TEXT}`);
+		.replace(/\.\*/g, () => `\${${i++}:TEXT}`)
+		.replace(/\\/g, '');
 }
 
 // Replace snippet syntax with default value
@@ -62,5 +63,13 @@ export function defaultComplInfo(): TS.CompletionInfo {
 		isMemberCompletion: false,
 		isNewIdentifierLocation: false,
 		entries: [],
+	};
+}
+
+function getNodeTextSpan(node: TS.Node): TS.TextSpan {
+	const start = node.getStart() + 1;
+	return {
+		start,
+		length: node.getWidth() - 2,
 	};
 }
