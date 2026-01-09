@@ -41,29 +41,39 @@ class TypeInfoFactory {
       if (decl && this.ts.isTypeAliasDeclaration(decl)) {
         typeNode = decl.type;
       }
-    } else {
-      const callLikeParent = this.findCallLikeExpression(node);
-      if (callLikeParent) {
-        const signature = this.checker.getResolvedSignature(callLikeParent);
-        if (signature && callLikeParent.arguments) {
-          const argIndex = callLikeParent.arguments.indexOf(node);
-          const parameterSymbol = signature.getParameters()[argIndex];
-          if (parameterSymbol) {
-            const paramDecl = parameterSymbol.getDeclarations()?.[0];
-            if (paramDecl && this.ts.isParameter(paramDecl)) {
-              typeNode = paramDecl.type ?? null;
-            }
-          }
+    }
+    if (!typeNode) {
+      const callLike = this.findCallLikeExpression(node);
+      if (callLike) {
+        const signature = this.checker.getResolvedSignature(callLike);
+        const argIndex = callLike.arguments?.indexOf(node) ?? 0;
+        const paramSymbol = signature?.getParameters()[argIndex];
+        const paramDecl = paramSymbol?.getDeclarations()?.[0];
+        if (paramDecl && this.ts.isParameter(paramDecl) && paramDecl.type) {
+          typeNode = paramDecl.type;
         }
       }
     }
     if (!typeNode) return null;
     const unionMemberNodes = this.collectUnionMemberNodes(typeNode);
+    const filteredNodes = unionMemberNodes.filter((memberNode) => {
+      if (memberNode.isRegexPattern !== true) return false;
+      const original = memberNode.callParent ?? memberNode.original ?? memberNode;
+      if (this.ts.isTemplateLiteralTypeNode(memberNode)) {
+        return (contextualType.getFlags() & this.ts.TypeFlags.StringLike) !== 0;
+      }
+      const memberType = this.checker.getTypeAtLocation(original);
+      const isMatch = this.checker.isTypeAssignableTo(
+        memberType,
+        contextualType
+      );
+      return isMatch;
+    });
     return new UnionInfo(
       1,
       "completion",
       node,
-      unionMemberNodes,
+      filteredNodes,
       void 0
     );
   }
