@@ -26,6 +26,10 @@ export declare class TypeInfoFactory {
     constructor(ts: typeof TS, ls: TS.LanguageService);
     getTypeInfo(fileName: string, position: number): UnionInfo[] | null;
     getContextualTypeInfo(fileName: string, position: number): UnionInfo | null;
+    private resolveTypeNode;
+    private getTypeNodeFromAlias;
+    private getTypeNodeFromParameter;
+    private filterRegexMembers;
     private findCallLikeExpression;
     private getUnionInfo;
     private getUnionVariableInfo;

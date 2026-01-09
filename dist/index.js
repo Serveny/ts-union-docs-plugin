@@ -35,40 +35,13 @@ class TypeInfoFactory {
     if (!node || !this.ts.isExpression(node)) return null;
     const contextualType = this.checker.getContextualType(node);
     if (!contextualType) return null;
-    let typeNode = null;
-    if (contextualType.aliasSymbol) {
-      const decl = contextualType.aliasSymbol.getDeclarations()?.[0];
-      if (decl && this.ts.isTypeAliasDeclaration(decl)) {
-        typeNode = decl.type;
-      }
-    }
-    if (!typeNode) {
-      const callLike = this.findCallLikeExpression(node);
-      if (callLike) {
-        const signature = this.checker.getResolvedSignature(callLike);
-        const argIndex = callLike.arguments?.indexOf(node) ?? 0;
-        const paramSymbol = signature?.getParameters()[argIndex];
-        const paramDecl = paramSymbol?.getDeclarations()?.[0];
-        if (paramDecl && this.ts.isParameter(paramDecl) && paramDecl.type) {
-          typeNode = paramDecl.type;
-        }
-      }
-    }
+    const typeNode = this.resolveTypeNode(node, contextualType);
     if (!typeNode) return null;
     const unionMemberNodes = this.collectUnionMemberNodes(typeNode);
-    const filteredNodes = unionMemberNodes.filter((memberNode) => {
-      if (memberNode.isRegexPattern !== true) return false;
-      const original = memberNode.callParent ?? memberNode.original ?? memberNode;
-      if (this.ts.isTemplateLiteralTypeNode(memberNode)) {
-        return (contextualType.getFlags() & this.ts.TypeFlags.StringLike) !== 0;
-      }
-      const memberType = this.checker.getTypeAtLocation(original);
-      const isMatch = this.checker.isTypeAssignableTo(
-        memberType,
-        contextualType
-      );
-      return isMatch;
-    });
+    const filteredNodes = this.filterRegexMembers(
+      unionMemberNodes,
+      contextualType
+    );
     return new UnionInfo(
       1,
       "completion",
@@ -76,6 +49,41 @@ class TypeInfoFactory {
       filteredNodes,
       void 0
     );
+  }
+  resolveTypeNode(node, contextualType) {
+    const aliasNode = this.getTypeNodeFromAlias(contextualType);
+    if (aliasNode) return aliasNode;
+    return this.getTypeNodeFromParameter(node);
+  }
+  getTypeNodeFromAlias(type) {
+    const decl = type.aliasSymbol?.getDeclarations()?.[0];
+    if (decl && this.ts.isTypeAliasDeclaration(decl)) {
+      return decl.type;
+    }
+    return null;
+  }
+  getTypeNodeFromParameter(node) {
+    const callLike = this.findCallLikeExpression(node);
+    if (!callLike) return null;
+    const signature = this.checker.getResolvedSignature(callLike);
+    const argIndex = callLike.arguments?.indexOf(node) ?? 0;
+    const paramSymbol = signature?.getParameters()[argIndex];
+    const paramDecl = paramSymbol?.getDeclarations()?.[0];
+    if (paramDecl && this.ts.isParameter(paramDecl) && paramDecl.type) {
+      return paramDecl.type;
+    }
+    return null;
+  }
+  filterRegexMembers(members, contextualType) {
+    return members.filter((memberNode) => {
+      if (memberNode.isRegexPattern !== true) return false;
+      const original = memberNode.callParent ?? memberNode.original ?? memberNode;
+      if (this.ts.isTemplateLiteralTypeNode(memberNode)) {
+        return (contextualType.getFlags() & this.ts.TypeFlags.StringLike) !== 0;
+      }
+      const memberType = this.checker.getTypeAtLocation(original);
+      return this.checker.isTypeAssignableTo(memberType, contextualType);
+    });
   }
   findCallLikeExpression(node) {
     let current = node.parent;
