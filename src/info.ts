@@ -487,7 +487,8 @@ export class TypeInfoFactory {
 			const isRegex = compNodes.some((n) => n.isRegexPattern === true);
 			const txt = (n: CalledNode & TS.LiteralLikeNode) =>
 				isRegex && n.isRegexPattern === false ? escapeRegExp(n.text) : n.text;
-			let fullText = headText + compNodes.map(txt).join('');
+			const head = isRegex ? escapeRegExp(headText) : headText;
+			const fullText = head + compNodes.map(txt).join('');
 			return compNodes.map((cn) =>
 				this.createLiteralNode(cn, fullText, cn.callParent, isRegex)
 			);
