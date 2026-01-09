@@ -3,8 +3,21 @@
 A TypeScript Language Service plugin that displays JSDoc comments from union type members directly in your editor's quick info (hover) tooltips.
 
 <p align="center">
-	<img width="600"  alt="image" src="example/demo.png" />
 </p>
+<table align="center">
+  <tr>
+    <td align="center" width="50%">
+   <img src="example/demo.png" width="100%" alt="Quick Info Demo" />
+      <br />
+      <sub>JS Doc comment for union members in <b>Quick Info</b></sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="example/demo_completion.png" width="100%" alt="Completion Demo" />
+      <br />
+      <sub><b>Snippet Completions</b> for template union members</sub>
+    </td>
+  </tr>
+</table>
 
 ### 💡 The Problem
 
