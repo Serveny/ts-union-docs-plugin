@@ -22,6 +22,9 @@ function getValue<TGroup extends Group>(
 
 // @ts-ignore
 getValue('', '');
+// @ts-ignore
+getValue('[Channel1]', '');
+
 getValue('[App]', 'gui_tick_50ms_period_s');
 getValue('[Channel1]', 'beatloop_size');
 

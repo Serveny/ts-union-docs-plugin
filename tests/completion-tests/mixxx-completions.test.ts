@@ -6,27 +6,7 @@ const { proxy, absolutePath, code } = createProxyFromCase(
 );
 
 describe('Mixxx Types Param Completion Tests', () => {
-	it('should suggest all dynamic Mixxx groups', () => {
-		const cursorPos = code.indexOf(`getValue('', '')`) + 10;
-		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
-
-		expect(result).toBeDefined();
-		expect(completionSnippetNames(result!)).toStrictEqual([
-			'[Auxiliary0]',
-			'[Channel0]',
-			'[EffectRack1_EffectUnit0]',
-			'[EffectRack1_EffectUnit0_Effect0]',
-			'[EqualizerRack1_[Channel0]]',
-			'[EqualizerRack1_[Channel0]_Effect1]',
-			'[Microphone0]',
-			'[PreviewDeck0]',
-			'[QuickEffectRack1_[Channel0]]',
-			'[QuickEffectRack1_[Channel0]_Effect1]',
-			'[Sampler0]',
-		]);
-	});
-
-	it('should suggest no Mixxx controls', () => {
+	it('should suggest all dynamic Mixxx controls', () => {
 		const cursorPos = code.indexOf(`getValue('', '')`) + 14;
 		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
 
@@ -100,6 +80,64 @@ describe('Mixxx Types Param Completion Tests', () => {
 			'button_parameter0_type',
 			'parameter0_loaded',
 			'parameter0_type',
+		]);
+	});
+
+	it('should suggest dynamic Mixxx controls for [Channel1] group', () => {
+		const cursorPos = code.indexOf(`getValue('[Channel1]', '');`) + 24;
+		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
+
+		expect(result).toBeDefined();
+		console.log(completionSnippetNames(result!));
+		expect(completionSnippetNames(result!)).toStrictEqual([
+			'PeakIndicator0',
+			'PeakIndicator0_up',
+			'PeakIndicator0_down',
+			'PeakIndicator0_up_small',
+			'PeakIndicator0_down_small',
+			'PeakIndicator0_set_one',
+			'PeakIndicator0_set_minus_one',
+			'PeakIndicator0_set_default',
+			'PeakIndicator0_set_zero',
+			'PeakIndicator0_toggle',
+			'PeakIndicator0_minus_toggle',
+			'VuMeter0',
+			'VuMeter0_up',
+			'VuMeter0_down',
+			'VuMeter0_up_small',
+			'VuMeter0_down_small',
+			'VuMeter0_set_one',
+			'VuMeter0_set_minus_one',
+			'VuMeter0_set_default',
+			'VuMeter0_set_zero',
+			'VuMeter0_toggle',
+			'VuMeter0_minus_toggle',
+			'beatjump_0_backward',
+			'beatjump_0_forward',
+			'beatloop_0_activate',
+			'beatloop_0_enabled',
+			'beatloop_0_toggle',
+			'beatloop_r0_activate',
+			'beatlooproll_0_activate',
+			'beatlooproll_r0_activate',
+			'hotcue_0_activate',
+			'hotcue_0_activatecue',
+			'hotcue_0_activateloop',
+			'hotcue_0_clear',
+			'hotcue_0_color',
+			'hotcue_0_cueloop',
+			'hotcue_0_goto',
+			'hotcue_0_gotoandloop',
+			'hotcue_0_gotoandplay',
+			'hotcue_0_gotoandstop',
+			'hotcue_0_position',
+			'hotcue_0_set',
+			'hotcue_0_setcue',
+			'hotcue_0_setloop',
+			'hotcue_0_status',
+			'hotcue_0_type',
+			'loop_move_0_backward',
+			'loop_move_0_forward',
 		]);
 	});
 });

@@ -23,7 +23,7 @@ describe('Completion template type test 1', () => {
 
 describe('Completion template type test 2', () => {
 	it('should suggest dynamic template types for function parameter', () => {
-		const cursorPos = code.indexOf(`logPrettyColor('Pretty-red');`) + 11;
+		const cursorPos = code.indexOf(`logPrettyColor('Pretty-red');`) + 16;
 		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
 		expect(result).toBeDefined();
 		expect(completionSnippetNames(result!)).toStrictEqual(['Pretty-red-0']);
@@ -40,7 +40,7 @@ describe('Completion template type test 2', () => {
 
 describe('Completion template type test 3', () => {
 	it('should suggest dynamic template types for function parameter', () => {
-		const cursorPos = code.indexOf(`logPrettyNColor('Pretty-1-red');`) + 11;
+		const cursorPos = code.indexOf(`logPrettyNColor('Pretty-1-red');`) + 17;
 		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
 		expect(result).toBeDefined();
 		expect(completionSnippetNames(result!)).toStrictEqual([
