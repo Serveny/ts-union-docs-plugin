@@ -74,11 +74,7 @@ describe('Completion template type test 4', () => {
 		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
 		expect(result).toBeDefined();
 		expect(completionSnippetNames(result!)).toStrictEqual([
-			'Pretty-0-red-suffix',
-			'Pretty-0-red-dark-suffix',
-			'Pretty-0-red-bright-suffix',
-			'Pretty-0-red-regex/[.*+?^${}()|[]-]/g-suffix',
-			'Pretty-0-red-0-suffix',
+			'Pretty-red-0-suffix',
 		]);
 	});
 
@@ -90,11 +86,7 @@ describe('Completion template type test 4', () => {
 		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
 		expect(result).toBeDefined();
 		expect(completionSnippetNames(result!)).toStrictEqual([
-			'Pretty-0-red-suffix',
-			'Pretty-0-red-dark-suffix',
-			'Pretty-0-red-bright-suffix',
-			'Pretty-0-red-regex/[.*+?^${}()|[]-]/g-suffix',
-			'Pretty-0-red-0-suffix',
+			'Pretty-red-0-suffix',
 		]);
 	});
 });

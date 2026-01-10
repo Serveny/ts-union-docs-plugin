@@ -451,8 +451,11 @@ export class TypeInfoFactory {
 			const innerTypeNodes = this.collectUnionMemberNodes(span.type, node);
 
 			for (const tn of innerTypeNodes) {
-				if (tn.isRegexPattern != null)
-					spanNodes.push(tn as CalledNode & TS.LiteralLikeNode);
+				if (tn.isRegexPattern != null) {
+					const rn = tn as CalledNode & TS.LiteralLikeNode;
+					rn.text += escapeRegExp(span.literal.text);
+					spanNodes.push(rn);
+				}
 				// Literal: "foo" -> "foo"
 				else if (
 					ts.isLiteralTypeNode(tn) &&

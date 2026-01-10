@@ -85,15 +85,10 @@ class TypeInfoFactory {
     return members.filter((memberNode) => {
       if (memberNode.isRegexPattern !== true) return false;
       const original = memberNode.callParent ?? memberNode.original ?? memberNode;
-      if (this.ts.isTemplateLiteralTypeNode(memberNode)) {
+      if (this.ts.isTemplateLiteralTypeNode(memberNode))
         return (contextualType.getFlags() & this.ts.TypeFlags.StringLike) !== 0;
-      }
       const memberType = this.checker.getTypeAtLocation(original);
-      const isMatch = this.checker.isTypeAssignableTo(
-        memberType,
-        contextualType
-      );
-      return isMatch;
+      return this.checker.isTypeAssignableTo(memberType, contextualType);
     });
   }
   findCallLikeExpression(node) {
@@ -273,10 +268,12 @@ class TypeInfoFactory {
     }
     return [];
   }
-  createLiteralNode(node, text, callParent, isRegexPattern, originalOverride) {
+  createLiteralNode(node, text, callParent, isRegexPattern) {
     const litNode = this.ts.factory.createStringLiteral(text);
-    const original = originalOverride ?? node.original ?? node;
-    litNode.id = original.id ?? node.id;
+    const cn = node;
+    const originalOverride = cn.isRegexPattern === true && cn.callParent != null && cn.callParent !== node && this.ts.isTemplateLiteralTypeNode(cn.callParent) ? cn.callParent : void 0;
+    const original = originalOverride ?? cn.original ?? node;
+    litNode.id = original.id ?? cn.id;
     return calledNode(litNode, callParent, original, isRegexPattern);
   }
   // Creates new literal nodes with every possible content
@@ -287,9 +284,11 @@ class TypeInfoFactory {
       const spanNodes = [];
       const innerTypeNodes = this.collectUnionMemberNodes(span.type, node);
       for (const tn of innerTypeNodes) {
-        if (tn.isRegexPattern != null)
-          spanNodes.push(tn);
-        else if (ts.isLiteralTypeNode(tn) && (this.ts.isStringLiteral(tn.literal) || this.ts.isNumericLiteral(tn.literal)))
+        if (tn.isRegexPattern != null) {
+          const rn = tn;
+          rn.text += escapeRegExp(span.literal.text);
+          spanNodes.push(rn);
+        } else if (ts.isLiteralTypeNode(tn) && (this.ts.isStringLiteral(tn.literal) || this.ts.isNumericLiteral(tn.literal)))
           spanNodes.push(
             this.createLiteralNode(
               tn,
@@ -329,16 +328,9 @@ class TypeInfoFactory {
       const txt = (n) => isRegex && n.isRegexPattern === false ? escapeRegExp(n.text) : n.text;
       const head = isRegex ? escapeRegExp(headText) : headText;
       const fullText = head + compNodes.map(txt).join("");
-      return compNodes.map((cn) => {
-        const originalOverride = cn.isRegexPattern === true && cn.callParent != null && cn.callParent !== node && ts.isTemplateLiteralTypeNode(cn.callParent) ? cn.callParent : void 0;
-        return this.createLiteralNode(
-          cn,
-          fullText,
-          node,
-          isRegex,
-          originalOverride
-        );
-      });
+      return compNodes.map(
+        (cn) => this.createLiteralNode(cn, fullText, node, isRegex)
+      );
     });
     return catProd;
   }

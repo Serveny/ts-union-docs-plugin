@@ -14,11 +14,11 @@
         "url": "https://github.com/Serveny/ts-union-docs-plugin"
     },
     "devDependencies": {
-        "@types/node": "25.0.3",
+        "@types/node": "25.0.5",
         "@vitest/ui": "^4.0.16",
         "rollup-plugin-node-externals": "8.1.2",
         "typescript": "5.9.3",
-        "vite": "7.3.0",
+        "vite": "7.3.1",
         "vite-plugin-dts": "4.5.4",
         "vitest": "^4.0.16"
     },
