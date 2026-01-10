@@ -40,3 +40,17 @@ function logPrettyNColor(color: PrettyNColor) {
 logPrettyNColor('Pretty-1-red');
 
 const prettyNColor: PrettyNColor = 'Pretty-1-red';
+
+// ===================
+// Test 4
+// ===================
+
+type PrettyColorWithSuffix = `Pretty-${Color}-suffix`;
+
+function logPrettyColorWithSuffix(color: PrettyColorWithSuffix) {
+	console.log(color);
+}
+
+logPrettyColorWithSuffix('Pretty-red-suffix');
+
+const prettyColorWithSuffix: PrettyColorWithSuffix = 'Pretty-red-suffix';

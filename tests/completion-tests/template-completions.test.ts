@@ -66,3 +66,35 @@ describe('Completion template type test 3', () => {
 		]);
 	});
 });
+
+describe('Completion template type test 4', () => {
+	it('should suggest dynamic template types for function parameter', () => {
+		const cursorPos =
+			code.indexOf(`logPrettyColorWithSuffix('Pretty-red-suffix');`) + 26;
+		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
+		expect(result).toBeDefined();
+		expect(completionSnippetNames(result!)).toStrictEqual([
+			'Pretty-0-red-suffix',
+			'Pretty-0-red-dark-suffix',
+			'Pretty-0-red-bright-suffix',
+			'Pretty-0-red-regex/[.*+?^${}()|[]-]/g-suffix',
+			'Pretty-0-red-0-suffix',
+		]);
+	});
+
+	it('should suggest dynamic template types for variable', () => {
+		const cursorPos =
+			code.indexOf(
+				`const prettyColorWithSuffix: PrettyColorWithSuffix = 'Pretty-red-suffix';`
+			) + 54;
+		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
+		expect(result).toBeDefined();
+		expect(completionSnippetNames(result!)).toStrictEqual([
+			'Pretty-0-red-suffix',
+			'Pretty-0-red-dark-suffix',
+			'Pretty-0-red-bright-suffix',
+			'Pretty-0-red-regex/[.*+?^${}()|[]-]/g-suffix',
+			'Pretty-0-red-0-suffix',
+		]);
+	});
+});

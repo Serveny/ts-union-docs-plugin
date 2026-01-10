@@ -53,7 +53,9 @@ class TypeInfoFactory {
   resolveTypeNode(node, contextualType) {
     const aliasNode = this.getTypeNodeFromAlias(contextualType);
     if (aliasNode) return aliasNode;
-    return this.getTypeNodeFromParameter(node);
+    const paramNode = this.getTypeNodeFromParameter(node);
+    if (paramNode) return paramNode;
+    return this.getTypeNodeFromInitializer(node);
   }
   getTypeNodeFromAlias(type) {
     const decl = type.aliasSymbol?.getDeclarations()?.[0];
@@ -69,8 +71,13 @@ class TypeInfoFactory {
     const argIndex = callLike.arguments?.indexOf(node) ?? 0;
     const paramSymbol = signature?.getParameters()[argIndex];
     const paramDecl = paramSymbol?.getDeclarations()?.[0];
-    if (paramDecl && this.ts.isParameter(paramDecl) && paramDecl.type) {
-      return paramDecl.type;
+    return paramDecl && this.ts.isParameter(paramDecl) && paramDecl.type ? paramDecl.type : null;
+  }
+  getTypeNodeFromInitializer(node) {
+    const parent = node.parent;
+    if (!parent) return null;
+    if (this.ts.isVariableDeclaration(parent) || this.ts.isPropertyDeclaration(parent)) {
+      return parent.initializer === node ? parent.type ?? null : null;
     }
     return null;
   }
@@ -82,7 +89,11 @@ class TypeInfoFactory {
         return (contextualType.getFlags() & this.ts.TypeFlags.StringLike) !== 0;
       }
       const memberType = this.checker.getTypeAtLocation(original);
-      return this.checker.isTypeAssignableTo(memberType, contextualType);
+      const isMatch = this.checker.isTypeAssignableTo(
+        memberType,
+        contextualType
+      );
+      return isMatch;
     });
   }
   findCallLikeExpression(node) {
@@ -262,15 +273,11 @@ class TypeInfoFactory {
     }
     return [];
   }
-  createLiteralNode(node, text, callParent, isRegexPattern) {
+  createLiteralNode(node, text, callParent, isRegexPattern, originalOverride) {
     const litNode = this.ts.factory.createStringLiteral(text);
-    litNode.id = node.original?.id ?? node.id;
-    return calledNode(
-      litNode,
-      callParent,
-      node.original ?? node,
-      isRegexPattern
-    );
+    const original = originalOverride ?? node.original ?? node;
+    litNode.id = original.id ?? node.id;
+    return calledNode(litNode, callParent, original, isRegexPattern);
   }
   // Creates new literal nodes with every possible content
   buildTemplateLiteralNode(node) {
@@ -322,9 +329,16 @@ class TypeInfoFactory {
       const txt = (n) => isRegex && n.isRegexPattern === false ? escapeRegExp(n.text) : n.text;
       const head = isRegex ? escapeRegExp(headText) : headText;
       const fullText = head + compNodes.map(txt).join("");
-      return compNodes.map(
-        (cn) => this.createLiteralNode(cn, fullText, cn.callParent, isRegex)
-      );
+      return compNodes.map((cn) => {
+        const originalOverride = cn.isRegexPattern === true && cn.callParent != null && cn.callParent !== node && ts.isTemplateLiteralTypeNode(cn.callParent) ? cn.callParent : void 0;
+        return this.createLiteralNode(
+          cn,
+          fullText,
+          node,
+          isRegex,
+          originalOverride
+        );
+      });
     });
     return catProd;
   }

@@ -1,5 +1,6 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
 
+// The supported start points for union documentation and completions
 export enum SupportedType {
 	Paramter,
 	Variable,
@@ -80,7 +81,10 @@ export class TypeInfoFactory {
 		const aliasNode = this.getTypeNodeFromAlias(contextualType);
 		if (aliasNode) return aliasNode;
 
-		return this.getTypeNodeFromParameter(node);
+		const paramNode = this.getTypeNodeFromParameter(node);
+		if (paramNode) return paramNode;
+
+		return this.getTypeNodeFromInitializer(node);
 	}
 
 	private getTypeNodeFromAlias(type: TS.Type): TS.TypeNode | null {
@@ -100,9 +104,22 @@ export class TypeInfoFactory {
 		const paramSymbol = signature?.getParameters()[argIndex];
 		const paramDecl = paramSymbol?.getDeclarations()?.[0];
 
-		if (paramDecl && this.ts.isParameter(paramDecl) && paramDecl.type) {
-			return paramDecl.type;
+		return paramDecl && this.ts.isParameter(paramDecl) && paramDecl.type
+			? paramDecl.type
+			: null;
+	}
+
+	private getTypeNodeFromInitializer(node: TS.Expression): TS.TypeNode | null {
+		const parent = node.parent;
+		if (!parent) return null;
+
+		if (
+			this.ts.isVariableDeclaration(parent) ||
+			this.ts.isPropertyDeclaration(parent)
+		) {
+			return parent.initializer === node ? parent.type ?? null : null;
 		}
+
 		return null;
 	}
 
@@ -116,9 +133,8 @@ export class TypeInfoFactory {
 			const original =
 				memberNode.callParent ?? memberNode.original ?? memberNode;
 
-			if (this.ts.isTemplateLiteralTypeNode(memberNode)) {
+			if (this.ts.isTemplateLiteralTypeNode(memberNode))
 				return (contextualType.getFlags() & this.ts.TypeFlags.StringLike) !== 0;
-			}
 
 			const memberType = this.checker.getTypeAtLocation(original);
 			return this.checker.isTypeAssignableTo(memberType, contextualType);
@@ -408,13 +424,18 @@ export class TypeInfoFactory {
 		isRegexPattern?: boolean
 	): CalledNode & TS.LiteralLikeNode {
 		const litNode = this.ts.factory.createStringLiteral(text);
-		(litNode as any).id = (node as any).original?.id ?? (node as any).id;
-		return calledNode(
-			litNode,
-			callParent,
-			(node as any).original ?? node,
-			isRegexPattern
-		);
+		const cn = node as CalledNode;
+		const originalOverride =
+			cn.isRegexPattern === true &&
+			cn.callParent != null &&
+			cn.callParent !== node &&
+			this.ts.isTemplateLiteralTypeNode(cn.callParent)
+				? cn.callParent
+				: undefined;
+		const original = originalOverride ?? cn.original ?? node;
+		(litNode as any).id = (original as any).id ?? cn.id;
+
+		return calledNode(litNode, callParent, original, isRegexPattern);
 	}
 
 	// Creates new literal nodes with every possible content
@@ -485,7 +506,7 @@ export class TypeInfoFactory {
 			const head = isRegex ? escapeRegExp(headText) : headText;
 			const fullText = head + compNodes.map(txt).join('');
 			return compNodes.map((cn) =>
-				this.createLiteralNode(cn, fullText, cn.callParent, isRegex)
+				this.createLiteralNode(cn, fullText, node, isRegex)
 			);
 		});
 
@@ -561,7 +582,7 @@ function calledNode<T extends TS.Node>(
 	isRegex?: boolean
 ): CalledNode & T {
 	const cNode = node as CalledNode;
-	cNode.callParent = callParent as any;
+	cNode.callParent = callParent;
 	cNode.original = original;
 	cNode.isRegexPattern = isRegex;
 	return cNode as any;

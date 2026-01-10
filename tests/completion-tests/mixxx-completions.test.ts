@@ -88,7 +88,6 @@ describe('Mixxx Types Param Completion Tests', () => {
 		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
 
 		expect(result).toBeDefined();
-		console.log(completionSnippetNames(result!));
 		expect(completionSnippetNames(result!)).toStrictEqual([
 			'PeakIndicator0',
 			'PeakIndicator0_up',

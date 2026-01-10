@@ -29,6 +29,7 @@ export declare class TypeInfoFactory {
     private resolveTypeNode;
     private getTypeNodeFromAlias;
     private getTypeNodeFromParameter;
+    private getTypeNodeFromInitializer;
     private filterRegexMembers;
     private findCallLikeExpression;
     private getUnionInfo;
