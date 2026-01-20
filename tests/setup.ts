@@ -63,8 +63,8 @@ export function tagsToText(quickInfo?: ts.QuickInfo): string | undefined {
 		.join('');
 }
 
-export function documentationToText(quickInfo: ts.QuickInfo) {
-	return quickInfo.documentation?.map((tag) => tag.text).join('');
+export function documentationToText(quickInfo?: ts.QuickInfo) {
+	return quickInfo?.documentation?.map((tag) => tag.text).join('');
 }
 
 export function completionSnippetNames(
