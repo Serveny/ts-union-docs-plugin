@@ -6,24 +6,18 @@ const { proxy, absolutePath, code } = createProxyFromCase(
 );
 
 describe('Mixxx Types Param Docs Tests', () => {
-	it('should find nothing', () => {
-		const cursorPos = code.indexOf(`getValue('', '')`);
-		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
-
-		expect(result).toBeDefined();
-		expect(tagsToText(result!))
-			.toBe(`Value of the control (within it's range according Mixxx Controls manual page:
-https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)`);
-	});
-
 	it('should find gui_tick_50ms_period_s docs', () => {
 		const cursorPos = code.indexOf(
 			`getValue('[App]', 'gui_tick_50ms_period_s')`
 		);
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
-		expect(tagsToText(result!))
-			.toContain(`Name of the control e.g. "play_indicator"
+
+		const text = tagsToText(result);
+		expect(text).toContain(
+			'> The [App] group contains controls that do not belong to a specific channel, the mixer or the effects engine.'
+		);
+		expect(text).toContain(`Name of the control e.g. "play_indicator"
 > A throttled timer that provides the time elapsed in seconds since Mixxx was started.
 > This control is updated at a rate of 20 Hz (every 50 milliseconds). It is the preferred timer for scripting animations in controller mappings (like VU meters or spinning animations) as it provides a smooth visual result without the performance overhead of [App],gui_tick_full_period_s.
 > Only available when using the legacy GUI (not the QML interface).
@@ -44,8 +38,12 @@ https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)`);
 		const cursorPos = code.indexOf(`getValue('[Channel1]', 'beatloop_size')`);
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
-		expect(tagsToText(result!))
-			.toContain(`Name of the control e.g. "play_indicator"
+
+		const text = tagsToText(result);
+		expect(text).toContain(
+			'Each deck in Mixxx corresponds to a [ChannelN] group. Whenever you see [ChannelN], think “Deck N”. N can range from 1 to the number of active decks in Mixxx.'
+		);
+		expect(text).toContain(`Name of the control e.g. "play_indicator"
 > Set the length of the loop in beats that will get set with
 > beatloop_activate and
 > beatlooproll_activate.
@@ -69,8 +67,12 @@ https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)`);
 		);
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
-		expect(tagsToText(result!))
-			.toContain(`Name of the control e.g. "play_indicator"
+
+		const text = tagsToText(result);
+		expect(text).toContain(
+			'Sample decks are identical to regular decks, but are used for playing samples; their controls mirror [ChannelN].'
+		);
+		expect(text).toContain(`Name of the control e.g. "play_indicator"
 > Speed control
 > This is a ControlPotMeter control.
 > 
@@ -93,8 +95,12 @@ https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)`);
 		);
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
-		expect(tagsToText(result!))
-			.toContain(`Name of the control e.g. "play_indicator"
+
+		const text = tagsToText(result);
+		expect(text).toContain(
+			'The [EffectRack1_EffectUnitN_EffectM] group contains controls for a single effect slot within an effects unit.'
+		);
+		expect(text).toContain(`Name of the control e.g. "play_indicator"
 > The scaled value of the Kth parameter.
 > See the Parameter Values section for more information.
 > This is a ControlPotMeter control.

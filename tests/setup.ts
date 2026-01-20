@@ -57,8 +57,8 @@ export function createProxyFromCase(relativeFilePath: string) {
 	return { proxy, absolutePath, code };
 }
 
-export function tagsToText(quickInfo: ts.QuickInfo): string | undefined {
-	return quickInfo.tags
+export function tagsToText(quickInfo?: ts.QuickInfo): string | undefined {
+	return quickInfo?.tags
 		?.map((tag) => tag.text?.map((t) => t.text)?.join(''))
 		.join('');
 }

@@ -53,28 +53,161 @@ setValue('[EffectRack1_EffectUnit1_Effect1]', 'parameter1_down_small', 1);
  */
 
 namespace MixxxControls {
+	type Group =
+		/**
+		 * The [App] group contains controls that do not belong to a specific channel, the mixer or the effects engine.
+		 */
+		| '[App]'
+
+		/**
+		 * The [Master] group generally corresponds to controls that affect the mixing engine. This will bear some similarity to what you will find on a DJ mixer (e.g. crossfader controls, headphone cueing controls, etc.).
+		 */
+		| '[Master]'
+
+		/**
+		 * The [Main] group contains controls for the main mix output meters and clipping indicators.
+		 */
+		| '[Main]'
+
+		/**
+		 * Each deck in Mixxx corresponds to a [ChannelN] group. Whenever you see [ChannelN], think “Deck N”. N can range from 1 to the number of active decks in Mixxx.
+		 */
+		| `[Channel${number}]`
+
+		/**
+		 * Preview decks are identical to regular decks, but are used for previewing tracks; their controls mirror [ChannelN].
+		 */
+		| `[PreviewDeck${number}]`
+
+		/**
+		 * Sample decks are identical to regular decks, but are used for playing samples; their controls mirror [ChannelN].
+		 */
+		| `[Sampler${number}]`
+
+		/**
+		 * The [Sampler] group contains global controls for managing sampler banks.
+		 */
+		| '[Sampler]'
+
+		/**
+		 * The [MicrophoneN] group contains controls for microphone input channels, including talkover and monitoring.
+		 */
+		| `[Microphone${number}]`
+
+		/**
+		 * The [AuxiliaryN] group contains controls for auxiliary input channels.
+		 */
+		| `[Auxiliary${number}]`
+
+		/**
+		 * The [VinylControl] group can toggle the vinyl control feature.
+		 */
+		| '[VinylControl]'
+
+		/**
+		 * The controls in the [Recording] group can be used to query and control the recording of your mix.
+		 */
+		| '[Recording]'
+
+		/**
+		 * The [AutoDJ] controls allow interacting with AutoDJ.
+		 */
+		| '[AutoDJ]'
+
+		/**
+		 * The controls in the [Library] group can be used to navigate the library. Note that [Library],MoveUp and other Move and Scroll controls emulate keypresses and therefore require the Mixxx window to be focused.
+		 */
+		| '[Library]'
+
+		/**
+		 * The [Shoutcast] group contains controls for broadcasting to a Shoutcast server.
+		 */
+		| '[Shoutcast]'
+
+		/**
+		 * [Playlist] controls allow navigating the sidebar and tracks table directly without considering the currently focused widget. This is helpful when another application’s window is focused.
+		 * This group is going to be deprecated at some point, with its controls added to [Library] above.
+		 */
+		| '[Playlist]'
+
+		/**
+		 * The [Controls] group contains controls that didn’t fit in any other group.
+		 */
+		| '[Controls]'
+
+		/**
+		 * The [EffectRack1] group contains global controls for the effects rack.
+		 */
+		| '[EffectRack1]'
+
+		/**
+		 * The [EffectRack1_EffectUnitN] group contains controls for an individual effects unit.
+		 */
+		| `[EffectRack1_EffectUnit${number}]`
+
+		/**
+		 * The [EffectRack1_EffectUnitN_EffectM] group contains controls for a single effect slot within an effects unit.
+		 */
+		| `[EffectRack1_EffectUnit${number}_Effect${number}]`
+
+		/**
+		 * The [QuickEffectRack1] group contains global controls for the quick effects rack.
+		 */
+		| '[QuickEffectRack1]'
+
+		/**
+		 * The [EqualizerRack1] group contains global controls for the EQ rack.
+		 */
+		| '[EqualizerRack1]'
+
+		/**
+		 * The [QuickEffectRack1_[ChannelI]] group contains per-deck quick effect controls.
+		 */
+		| `[QuickEffectRack1_[Channel${number}]]`
+
+		/**
+		 * The [EqualizerRack1_[ChannelI]] group contains per-deck EQ rack controls.
+		 */
+		| `[EqualizerRack1_[Channel${number}]]`
+
+		/**
+		 * The [QuickEffectRack1_[ChannelI]_Effect1] group contains controls for the single quick effect slot on a deck.
+		 */
+		| `[QuickEffectRack1_[Channel${number}]_Effect1]`
+
+		/**
+		 * The [EqualizerRack1_[ChannelI]_Effect1] group contains controls for the EQ effect slot on a deck.
+		 */
+		| `[EqualizerRack1_[Channel${number}]_Effect1]`
+
+		/**
+		 * The [Skin] group contains controls that are used to selective show and hide parts of the graphical user interface of Mixxx to suit your needs.
+		 */
+		| '[Skin]';
+
 	/*
 	 * Public
 	 */
-	export type MixxxGroup = keyof Controls;
+
+	export type MixxxGroup = Group;
 
 	// All controls
 	export type MixxxControl<TGroup> = 0 extends 1 & TGroup // is any check
 		? string
 		: TGroup extends keyof Controls | keyof ReadOnly.ReadOnlyControls
-		?
-				| (TGroup extends keyof Controls ? Controls[TGroup] : never)
-				| (TGroup extends keyof ReadOnly.ReadOnlyControls
-						? ReadOnly.ReadOnlyControls[TGroup]
-						: never)
-		: string;
+			?
+					| (TGroup extends keyof Controls ? Controls[TGroup] : never)
+					| (TGroup extends keyof ReadOnly.ReadOnlyControls
+							? ReadOnly.ReadOnlyControls[TGroup]
+							: never)
+			: string;
 
 	// Controls that are read & write at the same time
 	export type MixxxControlReadAndWrite<TGroup> = 0 extends 1 & TGroup // is any check
 		? string
 		: TGroup extends keyof Controls
-		? Controls[TGroup]
-		: string;
+			? Controls[TGroup]
+			: string;
 
 	/*
 	 * Group <-> control linking

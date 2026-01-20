@@ -78,10 +78,10 @@ After updating your `tsconfig.json`, you **must restart your TS Server**.
 
 - **Function Union Parameters Documentation:** When hovering over a a function.
 - **Documentation for Variables with Union Type:** When hovering over a `const`, `let` or `var` that is assigned a union member.
+- **Dynamic Type Suggestions:** Provide intelligent suggestions for template literal types (e.g., typing `group${number}` would suggest `group0`, `group1`, etc.).
 
 ## 🗺️ Roadmap
 
-- **Dynamic Type Suggestions:** Provide intelligent suggestions for template literal types (e.g., typing `group${number}` would suggest `group0`, `group1`, etc.).
 - **Deprecation warnings** for union type entries
 
 ## 🛠️ Contributing & Development
