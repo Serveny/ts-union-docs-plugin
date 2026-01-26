@@ -231,21 +231,33 @@ export class TypeInfoFactory {
 		return find(srcFile);
 	}
 
-	private getCallExpression(node: TS.Node): TS.CallExpression | null {
-		if (this.ts.isCallExpression(node)) return node;
-		while (node && !this.ts.isCallExpression(node)) node = node.parent;
+	private getCallExpression(
+		node: TS.Node
+	): TS.CallExpression | TS.NewExpression | null {
+		if (this.ts.isCallExpression(node) || this.ts.isNewExpression(node))
+			return node;
+		while (
+			node &&
+			!this.ts.isCallExpression(node) &&
+			!this.ts.isNewExpression(node)
+		)
+			node = node.parent;
 		return node;
 	}
 
-	private getUnionParamtersInfo(callExpr: TS.CallExpression): UnionInfo[] {
+	private getUnionParamtersInfo(
+		callExpr: TS.CallExpression | TS.NewExpression
+	): UnionInfo[] {
 		const paramTypes: UnionInfo[] = [];
 		const signature = this.checker.getResolvedSignature(callExpr);
 		if (!signature) return paramTypes;
 
-		const args = callExpr.arguments;
+		const args = callExpr.arguments ?? [];
 		const params = signature.getParameters();
 		for (let i = 0; i < params.length; i++) {
-			const paramInfo = this.getUnionInfo(params[i], args[i]);
+			const arg = args[i];
+			if (!arg) continue;
+			const paramInfo = this.getUnionInfo(params[i], arg);
 			if (paramInfo) paramTypes.push(paramInfo);
 		}
 

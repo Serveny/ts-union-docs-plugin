@@ -36,13 +36,4 @@ class VariableColorPalette {
 	) {}
 }
 
-const palette = new VariableColorPalette(
-	'blue',
-	'red',
-	'green/[.*+?^${}()|[]-]/g',
-	'324B3324'
-);
-
-function test(color1: Color, color2: Color, color3: Color, color4: Color) {}
-
-test('blue', 'red', 'green/[.*+?^${}()|[]-]/g', '324B3324');
+const palette = new VariableColorPalette('blue', 'red', 'A2', '324B3324');
