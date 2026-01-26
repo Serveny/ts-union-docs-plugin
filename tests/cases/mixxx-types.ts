@@ -1,9 +1,6 @@
 /**
  * Very complex example
  */
-type Group = MixxxControls.MixxxGroup;
-type Control<TGroup> = MixxxControls.MixxxControl<TGroup>;
-type ControlRW<TGroup> = MixxxControls.MixxxControlReadAndWrite<TGroup>;
 
 /**
  * Gets the control value
@@ -13,9 +10,9 @@ type ControlRW<TGroup> = MixxxControls.MixxxControlReadAndWrite<TGroup>;
  * @returns Value of the control (within it's range according Mixxx Controls manual page:
  *          https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)
  */
-function getValue<TGroup extends Group>(
+function getValue<TGroup extends MixxxControls.Group>(
 	group: TGroup,
-	name: Control<TGroup>
+	name: MixxxControls.Ctrl<TGroup>
 ): number {
 	return 0;
 }
@@ -36,9 +33,9 @@ getValue('[Channel1]', 'beatloop_size');
  * @param newValue Value to be set (within it's range according Mixxx Controls manual page:
  *                 https://manual.mixxx.org/latest/chapters/appendix/mixxx_controls.html)
  */
-function setValue<TGroup extends Group>(
+function setValue<TGroup extends MixxxControls.Group>(
 	group: TGroup,
-	name: ControlRW<TGroup>,
+	name: MixxxControls.CtrlRW<TGroup>,
 	newValue: number
 ) {}
 
@@ -53,7 +50,7 @@ setValue('[EffectRack1_EffectUnit1_Effect1]', 'parameter1_down_small', 1);
  */
 
 namespace MixxxControls {
-	type Group =
+	type GroupName =
 		/**
 		 * The [App] group contains controls that do not belong to a specific channel, the mixer or the effects engine.
 		 */
@@ -189,32 +186,24 @@ namespace MixxxControls {
 	 * Public
 	 */
 
-	export type MixxxGroup = Group;
+	export type Group = Utils.IsStrict extends true
+		? GroupName
+		: GroupName | (string & {});
 
 	// All controls
-	export type MixxxControl<TGroup> = 0 extends 1 & TGroup // is any check
-		? string
-		: TGroup extends keyof Controls | keyof ReadOnly.ReadOnlyControls
-			?
-					| (TGroup extends keyof Controls ? Controls[TGroup] : never)
-					| (TGroup extends keyof ReadOnly.ReadOnlyControls
-							? ReadOnly.ReadOnlyControls[TGroup]
-							: never)
-			: string;
+	export type Ctrl<TGroup> =
+		| Utils.MapGroup<TGroup, Controls>
+		| Utils.MapGroup<TGroup, ReadOnly.ReadOnlyControls>;
 
-	// Controls that are read & write at the same time
-	export type MixxxControlReadAndWrite<TGroup> = 0 extends 1 & TGroup // is any check
-		? string
-		: TGroup extends keyof Controls
-			? Controls[TGroup]
-			: string;
+	// Only read & write controls (subset of controls)
+	export type CtrlRW<TGroup> = Utils.MapGroup<TGroup, Controls>;
 
 	/*
 	 * Group <-> control linking
 	 */
 
 	// Read/Write controls
-	export type Controls = {
+	type Controls = {
 		'[App]': AppControl;
 		'[AutoDJ]': AutoDJControl;
 		'[Controls]': ControlsControl;
@@ -4058,445 +4047,14 @@ namespace MixxxControls {
 			ReadOnlyAuxiliaryNChannelNMicrophoneNControl;
 	}
 
-	namespace Deprecated {
-		export type DeprecatedAuxiliaryNMicrophoneNControl =
-			/**
-			 * 1 if a channel input is enabled, 0 if not.
-			 *
-			 * @groups [AuxiliaryN], [MicrophoneN]
-			 * @range binary
-			 * @feedback Microphone is enabled.
-			 * @since New in version 1.10.0.
-			 * @deprecated since  version 2.0.0: Use [MicrophoneN],input_configured instead.
-			 */
-			| 'enabled'
-
-			/**
-			 * Hold value at 1 to mix channel input into the main output.
-			 * For [MicrophoneN] use [MicrophoneN],talkover instead.
-			 * Note that [AuxiliaryN] also take [AuxiliaryN],orientation into account.
-			 *
-			 * @groups [AuxiliaryN], [MicrophoneN]
-			 * @range binary
-			 * @feedback Auxiliary: Play buttonMicrophone: N/A
-			 * @deprecated since  version 2.4.0: Use [MicrophoneN],talkover and [AuxiliaryN],main_mix instead.
-			 */
-			| 'master';
-
-		export type DeprecatedChannelNPreviewDeckNSamplerNControl =
-			/**
-			 * Setup a loop over the set number of beats.
-			 * If the loaded track has no beat grid, seconds are used instead of beats.
-			 *
-			 * @groups [ChannelN], [PreviewDeckN], [SamplerN]
-			 * @range positive real number
-			 * @feedback A loop is shown over the set number of beats.
-			 * @deprecated since  version 2.1.0: Use [ChannelN],beatloop_size and [ChannelN],beatloop_activate instead.
-			 */
-			| 'beatloop'
-
-			/**
-			 * Setup a loop over X beats. A control exists for X = 0.03125, 0.0625, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64
-			 * If the loaded track has no beat grid, seconds are used instead of beats.
-			 *
-			 * @groups [ChannelN], [PreviewDeckN], [SamplerN]
-			 * @range toggle
-			 * @feedback A loop is shown over X beats.
-			 * @since New in version 1.10.0.
-			 * @deprecated since  version 2.0.0: Use [ChannelN],beatloop_X_activate instead.
-			 */
-			| `beatloop_${number}`
-
-			/**
-			 * Toggles the filter effect.
-			 *
-			 * @groups [ChannelN], [PreviewDeckN], [SamplerN]
-			 * @range binary
-			 * @feedback Filter button
-			 * @since New in version 2.0.0.
-			 * @deprecated since  version 2.0.0: Use [QuickEffectRack1_[ChannelN]_Effect1],enabled instead.
-			 */
-			| 'filter'
-
-			/**
-			 * Adjusts the intensity of the filter effect.
-			 *
-			 * @groups [ChannelN], [PreviewDeckN], [SamplerN]
-			 * @range default
-			 * @feedback Filter depth knob
-			 * @since New in version 2.0.0.
-			 * @deprecated since  version 2.0.0: Use [QuickEffectRack1_[ChannelN]],super1 instead.
-			 */
-			| 'filterDepth'
-
-			/**
-			 * Adjusts the gain of the high EQ filter.
-			 *
-			 * @groups [ChannelN], [PreviewDeckN], [SamplerN]
-			 * @range 0.0..1.0..4.0
-			 * @feedback High EQ knob
-			 * @deprecated since  version 2.0.0: Use [EqualizerRack1_[ChannelI]_Effect1],parameter3 instead.
-			 */
-			| 'filterHigh'
-
-			/**
-			 * Holds the gain of the high EQ to -inf while active.
-			 *
-			 * @groups [ChannelN], [PreviewDeckN], [SamplerN]
-			 * @range binary
-			 * @feedback High EQ kill switch
-			 * @deprecated since  version 2.0.0: Use [EqualizerRack1_[ChannelI]_Effect1],button_parameter3 instead.
-			 */
-			| 'filterHighKill'
-
-			/**
-			 * Adjusts the gain of the low EQ filter.
-			 *
-			 * @groups [ChannelN], [PreviewDeckN], [SamplerN]
-			 * @range 0.0..1.0..4.0
-			 * @feedback Low EQ knob
-			 * @deprecated since  version 2.0.0: Use [EqualizerRack1_[ChannelN]_Effect1],parameter1 instead.
-			 */
-			| 'filterLow'
-
-			/**
-			 * Holds the gain of the low EQ to -inf while active
-			 *
-			 * @groups [ChannelN], [PreviewDeckN], [SamplerN]
-			 * @range binary
-			 * @feedback Low EQ kill switch
-			 * @deprecated since  version 2.0.0: Use [EqualizerRack1_[ChannelI]_Effect1],button_parameter1 instead.
-			 */
-			| 'filterLowKill'
-
-			/**
-			 * Adjusts the gain of the mid EQ filter..
-			 *
-			 * @groups [ChannelN], [PreviewDeckN], [SamplerN]
-			 * @range 0.0..1.0..4.0
-			 * @feedback Mid EQ knob
-			 * @deprecated since  version 2.0.0: Use [EqualizerRack1_[ChannelI]_Effect1],parameter2 instead.
-			 */
-			| 'filterMid'
-
-			/**
-			 * Holds the gain of the mid EQ to -inf while active.
-			 *
-			 * @groups [ChannelN], [PreviewDeckN], [SamplerN]
-			 * @range binary
-			 * @feedback Mid EQ kill switch
-			 * @deprecated since  version 2.0.0: Use [EqualizerRack1_[ChannelI]_Effect1],button_parameter2 instead.
-			 */
-			| 'filterMidKill'
-
-			/**
-			 * Indicates if hotcue slot X is set, active or empty.
-			 *
-			 * @groups [ChannelN], [PreviewDeckN], [SamplerN]
-			 * @since New in version 1.8.0.
-			 * @deprecated since  version 2.4.0: Use [ChannelN],hotcue_X_status instead.
-			 */
-			| `hotcue_${number}_enabled`
-
-			/**
-			 * Affects relative playback speed and direction for short instances (additive & is automatically reset to 0).
-			 *
-			 * @groups [ChannelN], [PreviewDeckN], [SamplerN]
-			 * @range -3.0..3.0
-			 * @feedback waveform
-			 * @deprecated since  version ??: Use the JavaScript engine.scratch functions instead.
-			 */
-			| 'jog'
-
-			/**
-			 * Toggles the current loop on or off. If the loop is ahead of the current play position, the track will keep playing normally until it reaches the loop.
-			 *
-			 * @groups [ChannelN], [PreviewDeckN], [SamplerN]
-			 * @range binary
-			 * @feedback Loop range in waveform activates or deactivates.
-			 * @deprecated since  version 2.1.0: Use [ChannelN],reloop_toggle instead.
-			 */
-			| 'reloop_exit'
-
-			/**
-			 * Affects playback speed and direction (differently whether currently playing or not) (multiplicative).
-			 *
-			 * @groups [ChannelN], [PreviewDeckN], [SamplerN]
-			 * @range -3.0..3.0
-			 * @feedback Waveform
-			 * @deprecated since  version ??: Use the JavaScript engine.scratch functions instead.
-			 */
-			| 'scratch';
-
-		export type DeprecatedEffectRack1Control =
-			/**
-			 * Show the Effect Rack
-			 *
-			 * @groups [EffectRack1]
-			 * @range binary
-			 * @deprecated since  version 2.4.0: Use [Skin],show_effectrack instead.
-			 */
-			'show';
-
-		export type DeprecatedEffectRack1EffectUnitNEqualizerRack1ChannelIQuickEffectRack1ChannelIControl =
-			/**
-			 * Select EffectChain preset. > 0 goes one forward; < 0 goes one backward.
-			 *
-			 * @groups [EffectRack1_EffectUnitN], [EqualizerRack1_[ChannelI]], [QuickEffectRack1_[ChannelI]]
-			 * @deprecated since  version 2.4.0: Use [EffectRack1_EffectUnitN],chain_preset_selector instead.
-			 */
-			| 'chain_selector'
-
-			/**
-			 * Cycle to the next EffectChain preset after the currently loaded preset.
-			 *
-			 * @groups [EffectRack1_EffectUnitN], [EqualizerRack1_[ChannelI]], [QuickEffectRack1_[ChannelI]]
-			 * @deprecated since  version 2.4.0: Use [EffectRack1_EffectUnitN],next_chain_preset instead.
-			 */
-			| 'next_chain'
-
-			/**
-			 * Cycle to the next EffectChain preset after the currently loaded preset.
-			 *
-			 * @groups [EffectRack1_EffectUnitN], [EqualizerRack1_[ChannelI]], [QuickEffectRack1_[ChannelI]]
-			 * @deprecated since  version 2.4.0: Use [EffectRack1_EffectUnitN],prev_chain_preset instead.
-			 */
-			| 'prev_chain';
-
-		export type DeprecatedLibraryControl =
-			/**
-			 * Toggle the Cover Art in Library
-			 *
-			 * @groups [Library]
-			 * @range Binary
-			 * @deprecated since  version 2.4.0: Use [Skin],show_library_coverart instead.
-			 */
-			'show_coverart';
-
-		export type DeprecatedMasterControl =
-			/**
-			 * A throttled timer that provides the time elapsed in seconds since Mixxx was started.
-			 *
-			 * @groups [Master]
-			 * @range 0.0 .. n
-			 * @feedback None
-			 * @since New in version 2.4.0.
-			 * @readonly
-			 * @deprecated since  version 2.5.0: Use [App],gui_tick_50ms_period_s instead.
-			 */
-			| 'guiTick50ms'
-
-			/**
-			 * A high-resolution timer that provides the elapsed time in seconds since Mixxx was started.
-			 *
-			 * @groups [Master]
-			 * @range 0.0 .. n
-			 * @feedback None
-			 * @since New in version 2.4.0.
-			 * @readonly
-			 * @deprecated since  version 2.5.0: Use [App],gui_tick_full_period_s instead.
-			 */
-			| 'guiTickTime'
-
-			/**
-			 * Adjust headphone volume.
-			 *
-			 * @groups [Master]
-			 * @range 0.0..1.0..5.0
-			 * @feedback Headphone Gain knob
-			 * @deprecated since  version 2.0.0: Use [Master],headGain instead.
-			 */
-			| 'headVolume'
-
-			/**
-			 * Toggle maximized view of library.
-			 *
-			 * @groups [Master]
-			 * @range binary
-			 * @feedback Toggle maximized view of library
-			 * @since New in version 2.0.0.
-			 * @deprecated since  version 2.4.0: Use [Skin],show_maximized_library instead.
-			 */
-			| 'maximize_library'
-
-			/**
-			 * The number of auxiliary inputs that can be configured.
-			 *
-			 * @groups [Master]
-			 * @range integer
-			 * @feedback None
-			 * @since New in version 2.2.4.
-			 * @deprecated since  version 2.4.0: Use [App],num_auxiliaries instead.
-			 */
-			| 'num_auxiliaries'
-
-			/**
-			 * The number of decks currently enabled.
-			 *
-			 * @groups [Master]
-			 * @range integer
-			 * @feedback None
-			 * @since New in version 1.9.0.
-			 * @deprecated since  version 2.4.0: Use [App],num_decks instead.
-			 */
-			| 'num_decks'
-
-			/**
-			 * The number of microphone inputs that can be configured.
-			 *
-			 * @groups [Master]
-			 * @range integer
-			 * @feedback None
-			 * @since New in version 2.2.4.
-			 * @deprecated since  version 2.4.0: Use [App],num_microphones instead.
-			 */
-			| 'num_microphones'
-
-			/**
-			 * The number of preview decks currently enabled.
-			 *
-			 * @groups [Master]
-			 * @range integer
-			 * @feedback None
-			 * @since New in version 1.9.0.
-			 * @deprecated since  version 2.4.0: Use [App],num_preview_decks instead.
-			 */
-			| 'num_preview_decks'
-
-			/**
-			 * The number of samplers currently enabled.
-			 *
-			 * @groups [Master]
-			 * @range integer
-			 * @feedback None
-			 * @since New in version 1.9.0.
-			 * @deprecated since  version 2.4.0: Use [App],num_samplers instead.
-			 */
-			| 'num_samplers'
-
-			/**
-			 * The current output sample rate (default: 44100 Hz).
-			 *
-			 * @groups [Master]
-			 * @range absolute value (in Hz)
-			 * @feedback None
-			 * @deprecated since  version 2.4.0: Use [App],samplerate instead.
-			 */
-			| 'samplerate'
-
-			/**
-			 * Adjust main volume.
-			 *
-			 * @groups [Master]
-			 * @range 0.0..1.0..5.0
-			 * @feedback Main Gain knob
-			 * @deprecated since  version 2.0.0: Use [Master],gain instead.
-			 */
-			| 'volume';
-
-		export type DeprecatedMicrophoneNControl =
-			/**
-			 * (No description)
-			 *
-			 * @groups [MicrophoneN]
-			 * @since New in version 1.10.0.
-			 * @deprecated since  version 1.10.0: The control is not processed in the Mixer, which is also why there are no orientation controls for Microphones in the GUI.
-			 */
-			'orientation' | DeprecatedAuxiliaryNMicrophoneNControl;
-
-		export type DeprecatedPlaylistControl =
-			/**
-			 * Performs the same action action like [Library],GoToItem does when the tracks table has focus,
-			 * just regardless of the focus.
-			 *
-			 * @groups [Playlist]
-			 * @deprecated since  version 2.1.0: Use [Library],GoToItem instead.
-			 */
-			| 'LoadSelectedIntoFirstStopped'
-
-			/**
-			 * Switches to the next view (Library, Queue, etc.)
-			 *
-			 * @groups [Playlist]
-			 * @deprecated since  version 2.1.0: Use [Library],MoveDown instead.
-			 */
-			| 'SelectNextPlaylist'
-
-			/**
-			 * Scrolls to the next track in the track table.
-			 *
-			 * @groups [Playlist]
-			 * @deprecated since  version 2.1.0: Use [Library],MoveDown instead.
-			 */
-			| 'SelectNextTrack'
-
-			/**
-			 * Switches to the previous view (Library, Queue, etc.)
-			 *
-			 * @groups [Playlist]
-			 * @deprecated since  version 2.1.0: Use [Library],MoveUp instead.
-			 */
-			| 'SelectPrevPlaylist'
-
-			/**
-			 * Scrolls to the previous track in the track table.
-			 *
-			 * @groups [Playlist]
-			 * @deprecated since  version 2.1.0: Use [Library],MoveUp instead.
-			 */
-			| 'SelectPrevTrack'
-
-			/**
-			 * Toggles (expands/collapses) the currently selected sidebar item.
-			 *
-			 * @groups [Playlist]
-			 * @since New in version 1.11.0.
-			 * @deprecated since  version 2.1.0: Use [Library],GoToItem instead.
-			 */
-			| 'ToggleSelectedSidebarItem';
-
-		export type DeprecatedSamplersControl =
-			/**
-			 * (No description)
-			 *
-			 * @groups [Samplers]
-			 * @range binary
-			 * @feedback Shows Sampler bank(s)
-			 * @deprecated since  version 2.4.0: Use [Skin],show_samplers instead.
-			 */
-			'show_samplers';
-
-		export type DeprecatedVinylControlControl =
-			/**
-			 * Toggle the vinyl control section in skins.
-			 *
-			 * @groups [VinylControl]
-			 * @range binary
-			 * @feedback Vinyl controls are shown
-			 * @since New in version 1.10.0.
-			 * @deprecated since  version 2.4.0: Use [Skin],show_vinylcontrol instead.
-			 */
-			'show_vinylcontrol';
-
-		export type DeprecatedSamplerNControl =
-			DeprecatedChannelNPreviewDeckNSamplerNControl;
-
-		export type DeprecatedEffectRack1EffectUnitNControl =
-			DeprecatedEffectRack1EffectUnitNEqualizerRack1ChannelIQuickEffectRack1ChannelIControl;
-
-		export type DeprecatedEqualizerRack1ChannelIControl =
-			DeprecatedEffectRack1EffectUnitNEqualizerRack1ChannelIQuickEffectRack1ChannelIControl;
-
-		export type DeprecatedChannelNControl =
-			DeprecatedChannelNPreviewDeckNSamplerNControl;
-
-		export type DeprecatedAuxiliaryNControl =
-			DeprecatedAuxiliaryNMicrophoneNControl;
-
-		export type DeprecatedQuickEffectRack1ChannelIControl =
-			DeprecatedEffectRack1EffectUnitNEqualizerRack1ChannelIQuickEffectRack1ChannelIControl;
-
-		export type DeprecatedPreviewDeckNControl =
-			DeprecatedChannelNPreviewDeckNSamplerNControl;
+	// Internal helper types
+	namespace Utils {
+		export type IsStrict = true;
+		export type Default = IsStrict extends true ? never : string & {};
+		export type MapGroup<TGroup, TMap> = 0 extends 1 & TGroup
+			? string // any check
+			: TGroup extends keyof TMap
+				? TMap[TGroup] // found in map
+				: Default; // fallback
 	}
 }
