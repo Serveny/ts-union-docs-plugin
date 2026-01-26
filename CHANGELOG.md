@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.0]
+
+- **Added** Support for constructor union parameter JSDoc
+- **Fixed** union traversal for generic type aliases
+- **Tests** Added coverage for Mixxx group types and union class properties
+
 ## [0.1.0]
 
 - **Enhanced Completions:** Added support for contextual types, snippets, regex spans, and nested union/template types.

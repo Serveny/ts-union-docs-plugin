@@ -150,18 +150,22 @@ class TypeInfoFactory {
     return find(srcFile);
   }
   getCallExpression(node) {
-    if (this.ts.isCallExpression(node)) return node;
-    while (node && !this.ts.isCallExpression(node)) node = node.parent;
+    if (this.ts.isCallExpression(node) || this.ts.isNewExpression(node))
+      return node;
+    while (node && !this.ts.isCallExpression(node) && !this.ts.isNewExpression(node))
+      node = node.parent;
     return node;
   }
   getUnionParamtersInfo(callExpr) {
     const paramTypes = [];
     const signature = this.checker.getResolvedSignature(callExpr);
     if (!signature) return paramTypes;
-    const args = callExpr.arguments;
+    const args = callExpr.arguments ?? [];
     const params = signature.getParameters();
     for (let i = 0; i < params.length; i++) {
-      const paramInfo = this.getUnionInfo(params[i], args[i]);
+      const arg = args[i];
+      if (!arg) continue;
+      const paramInfo = this.getUnionInfo(params[i], arg);
       if (paramInfo) paramTypes.push(paramInfo);
     }
     return paramTypes;
@@ -169,34 +173,38 @@ class TypeInfoFactory {
   getValue(expr) {
     return this.ts.isLiteralExpression(expr) ? expr.text : expr.getText();
   }
-  collectUnionMemberNodes(node, callParent) {
+  collectUnionMemberNodes(node, callParent, typeArgMap) {
     const ts = this.ts;
     node.codeText = getNodeText(node);
     if (ts.isUnionTypeNode(node) || // e.g. string | number
     ts.isIntersectionTypeNode(node) || // e.g. Class1 & Class2
     ts.isHeritageClause(node)) {
       return node.types.flatMap(
-        (tn) => this.collectUnionMemberNodes(tn, callParent)
+        (tn) => this.collectUnionMemberNodes(tn, callParent, typeArgMap)
       );
     }
     if (ts.isConditionalTypeNode(node))
-      return this.collectConditionalTypeNode(node);
+      return this.collectConditionalTypeNode(node, typeArgMap);
     if (ts.isIndexedAccessTypeNode(node))
-      return this.collectIndexedAccessTypeNode(node);
-    if (ts.isTypeLiteralNode(node)) return this.collectTypeLiteralNode(node);
-    if (ts.isMappedTypeNode(node)) return this.collectMappedTypeNode(node);
+      return this.collectIndexedAccessTypeNode(node, typeArgMap);
+    if (ts.isTypeLiteralNode(node))
+      return this.collectTypeLiteralNode(node, typeArgMap);
+    if (ts.isMappedTypeNode(node))
+      return this.collectMappedTypeNode(node, typeArgMap);
     if (ts.isTypeReferenceNode(node))
-      return this.collectTypeReferenceNode(node);
+      return this.collectTypeReferenceNode(node, typeArgMap);
     if (ts.isTypeOperatorNode(node) && node.operator === ts.SyntaxKind.KeyOfKeyword)
       return this.collectKeyOfKeywordTypeOperatorNode(node, callParent);
     if (ts.isParenthesizedTypeNode(node))
-      return this.collectUnionMemberNodes(node.type, node);
+      return this.collectUnionMemberNodes(node.type, node, typeArgMap);
     if (ts.isArrayTypeNode(node))
-      return this.collectUnionMemberNodes(node.elementType, node);
-    if (ts.isTupleTypeNode(node)) return this.collectTupleTypeNode(node);
-    if (ts.isTypeQueryNode(node)) return this.collectTypeQueryNode(node);
+      return this.collectUnionMemberNodes(node.elementType, node, typeArgMap);
+    if (ts.isTupleTypeNode(node))
+      return this.collectTupleTypeNode(node, typeArgMap);
+    if (ts.isTypeQueryNode(node))
+      return this.collectTypeQueryNode(node, typeArgMap);
     if (ts.isTemplateLiteralTypeNode(node))
-      return this.buildTemplateLiteralNode(node);
+      return this.buildTemplateLiteralNode(node, typeArgMap);
     if (ts.isLiteralTypeNode(node) || // e.g. "text", 42, true
     ts.isTypeNode(node)) {
       return [calledNode(node, callParent)];
@@ -204,44 +212,59 @@ class TypeInfoFactory {
     console.warn("Unknown node type: ", node);
     return [];
   }
-  collectConditionalTypeNode(node) {
+  collectConditionalTypeNode(node, typeArgMap) {
     return [
-      ...this.collectUnionMemberNodes(node.checkType, node),
-      ...this.collectUnionMemberNodes(node.extendsType, node),
-      ...this.collectUnionMemberNodes(node.trueType, node),
-      ...this.collectUnionMemberNodes(node.falseType, node)
+      ...this.collectUnionMemberNodes(node.checkType, node, typeArgMap),
+      ...this.collectUnionMemberNodes(node.extendsType, node, typeArgMap),
+      ...this.collectUnionMemberNodes(node.trueType, node, typeArgMap),
+      ...this.collectUnionMemberNodes(node.falseType, node, typeArgMap)
     ];
   }
-  collectIndexedAccessTypeNode(node) {
+  collectIndexedAccessTypeNode(node, typeArgMap) {
     return [
-      ...this.collectUnionMemberNodes(node.objectType, node),
-      ...this.collectUnionMemberNodes(node.indexType, node)
+      ...this.collectUnionMemberNodes(node.objectType, node, typeArgMap),
+      ...this.collectUnionMemberNodes(node.indexType, node, typeArgMap)
     ];
   }
-  collectTypeLiteralNode(node) {
+  collectTypeLiteralNode(node, typeArgMap) {
     return node.members.flatMap(
-      (m) => m.type ? this.collectUnionMemberNodes(m.type, node) : []
+      (m) => m.type ? this.collectUnionMemberNodes(m.type, node, typeArgMap) : []
     );
   }
-  collectMappedTypeNode(node) {
+  collectMappedTypeNode(node, typeArgMap) {
     const results = [];
     if (node.typeParameter.constraint)
       results.push(
-        ...this.collectUnionMemberNodes(node.typeParameter.constraint, node)
+        ...this.collectUnionMemberNodes(
+          node.typeParameter.constraint,
+          node,
+          typeArgMap
+        )
       );
     if (node.type)
-      results.push(...this.collectUnionMemberNodes(node.type, node));
+      results.push(
+        ...this.collectUnionMemberNodes(node.type, node, typeArgMap)
+      );
     return results;
   }
-  collectTypeReferenceNode(node) {
+  collectTypeReferenceNode(node, typeArgMap) {
     const checker = this.checker, ts = this.ts, symbol = checker.getSymbolAtLocation(node.typeName);
     if (!symbol) return [];
     const aliasedSymbol = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
     const decl = aliasedSymbol.declarations?.[0];
     if (!decl) return [];
-    const tn = ts.isTypeParameterDeclaration(decl) ? decl.constraint ?? null : ts.isTypeAliasDeclaration(decl) ? decl.type : null;
-    if (!tn) return [];
-    return this.collectUnionMemberNodes(tn, node);
+    if (ts.isTypeParameterDeclaration(decl)) {
+      const mapped = typeArgMap?.get(aliasedSymbol);
+      if (mapped) return this.collectUnionMemberNodes(mapped, node, typeArgMap);
+      if (decl.constraint)
+        return this.collectUnionMemberNodes(decl.constraint, node, typeArgMap);
+      return [];
+    }
+    if (ts.isTypeAliasDeclaration(decl)) {
+      const nextMap = this.buildTypeArgumentMap(decl, node, typeArgMap);
+      return this.collectUnionMemberNodes(decl.type, node, nextMap);
+    }
+    return [];
   }
   collectKeyOfKeywordTypeOperatorNode(node, callParent) {
     const ts = this.ts, checker = this.checker, type = checker.getTypeAtLocation(node.type);
@@ -253,17 +276,17 @@ class TypeInfoFactory {
       return calledNode(litNode, callParent, decl);
     });
   }
-  collectTupleTypeNode(node) {
+  collectTupleTypeNode(node, typeArgMap) {
     return node.elements.flatMap(
-      (el) => this.collectUnionMemberNodes(el, node)
+      (el) => this.collectUnionMemberNodes(el, node, typeArgMap)
     );
   }
-  collectTypeQueryNode(node) {
+  collectTypeQueryNode(node, typeArgMap) {
     const symbol = this.checker.getSymbolAtLocation(node.exprName);
     if (symbol) {
       const decls = symbol.getDeclarations() ?? [];
       return decls.flatMap(
-        (d) => this.collectUnionMemberNodes(d, node)
+        (d) => this.collectUnionMemberNodes(d, node, typeArgMap)
       );
     }
     return [];
@@ -277,12 +300,16 @@ class TypeInfoFactory {
     return calledNode(litNode, callParent, original, isRegexPattern);
   }
   // Creates new literal nodes with every possible content
-  buildTemplateLiteralNode(node) {
+  buildTemplateLiteralNode(node, typeArgMap) {
     const headText = node.head.text, ts = this.ts;
     const nodes = [];
     for (const span of node.templateSpans) {
       const spanNodes = [];
-      const innerTypeNodes = this.collectUnionMemberNodes(span.type, node);
+      const innerTypeNodes = this.collectUnionMemberNodes(
+        span.type,
+        node,
+        typeArgMap
+      );
       for (const tn of innerTypeNodes) {
         if (tn.isRegexPattern != null) {
           const rn = tn;
@@ -333,6 +360,19 @@ class TypeInfoFactory {
       );
     });
     return catProd;
+  }
+  buildTypeArgumentMap(decl, node, typeArgMap) {
+    const map = typeArgMap ? new Map(typeArgMap) : /* @__PURE__ */ new Map();
+    const typeParams = decl.typeParameters ?? [];
+    const typeArgs = node.typeArguments ?? [];
+    for (let i = 0; i < typeParams.length; i++) {
+      const param = typeParams[i];
+      const symbol = this.checker.getSymbolAtLocation(param.name);
+      if (!symbol) continue;
+      const arg = typeArgs[i] ?? param.default ?? param.constraint;
+      if (arg) map.set(symbol, arg);
+    }
+    return map;
   }
   cmp(expr, node) {
     if (isRegexNode(node) && this.ts.isStringLiteral(expr)) {

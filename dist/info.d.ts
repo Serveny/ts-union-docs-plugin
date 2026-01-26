@@ -50,6 +50,7 @@ export declare class TypeInfoFactory {
     private collectTypeQueryNode;
     private createLiteralNode;
     private buildTemplateLiteralNode;
+    private buildTypeArgumentMap;
     private cmp;
     private cmpLit;
 }
