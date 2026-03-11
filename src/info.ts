@@ -451,7 +451,10 @@ export class TypeInfoFactory {
 		if (!program) return null;
 
 		if (!this.sourceFileCache.has(fileName)) {
-			this.sourceFileCache.set(fileName, program.getSourceFile(fileName) ?? null);
+			this.sourceFileCache.set(
+				fileName,
+				program.getSourceFile(fileName) ?? null
+			);
 		}
 
 		return this.sourceFileCache.get(fileName) ?? null;
@@ -984,51 +987,89 @@ function getLeadingComment(
 }
 
 function prepareJSDocMetadata(rawComment: string) {
+	const normalizedLines = normalizeJSDocLines(rawComment);
 	return {
-		docComment: prepareJSDocText(rawComment),
-		tags: extractDeprecatedTags(rawComment),
+		docComment: extractDocComment(normalizedLines),
+		tags: extractJSDocTags(normalizedLines),
 	};
 }
 
-function prepareJSDocText(rawComment: string): string[] {
+function normalizeJSDocLines(rawComment: string): string[] {
 	return rawComment
 		.replace('/**', '')
 		.replace('*/', '')
 		.split('\n')
-		.map((line) => line.trim().replace(/^\* ?/, ''))
-		.map((line) => line.replace(/@(\w+)/g, (_, tag) => `\n> _@${tag}_`));
+		.map((line) => line.trim().replace(/^\* ?/, ''));
 }
 
-function extractDeprecatedTags(rawComment: string): TS.JSDocTagInfo[] {
-	const normalizedLines = rawComment
-		.replace('/**', '')
-		.replace('*/', '')
-		.split('\n')
-		.map((line) => line.trim().replace(/^\* ?/, ''));
+function extractDocComment(normalizedLines: string[]): string[] {
+	const docComment: string[] = [];
 
-	const tags: TS.JSDocTagInfo[] = [];
 	for (let i = 0; i < normalizedLines.length; i++) {
 		const line = normalizedLines[i];
-		const match = line.match(/^@deprecated\b(?:\s+(.*))?$/);
+		if (isTagLine(line)) {
+			for (let j = i + 1; j < normalizedLines.length; j++) {
+				if (isTagLine(normalizedLines[j])) break;
+				i = j;
+			}
+			continue;
+		}
+
+		docComment.push(line);
+	}
+
+	return trimEmptyLines(docComment);
+}
+
+function extractJSDocTags(normalizedLines: string[]): TS.JSDocTagInfo[] {
+	const tags: TS.JSDocTagInfo[] = [];
+
+	for (let i = 0; i < normalizedLines.length; i++) {
+		const line = normalizedLines[i];
+		const match = line.match(/^@(\w+)\b(?:\s+(.*))?$/);
 		if (!match) continue;
 
-		const tagLines = [match[1]?.trim() ?? ''];
+		const tagLines = [match[2]?.trim() ?? ''];
 		for (let j = i + 1; j < normalizedLines.length; j++) {
-			const continuationLine = normalizedLines[j].trim();
-			if (continuationLine.startsWith('@')) break;
-			if (continuationLine === '') continue;
+			const continuationLine = normalizedLines[j];
+			if (isTagLine(continuationLine)) break;
 			tagLines.push(continuationLine);
 			i = j;
 		}
 
-		const text = tagLines.join(' ').trim();
+		const normalizedTagLines = trimEmptyLines(tagLines).map((part) => part.trim());
+		const text = shouldPreserveTagLineBreaks(normalizedTagLines)
+			? normalizedTagLines.join('\n').trim()
+			: normalizedTagLines.join(' ').trim();
 		tags.push({
-			name: 'deprecated',
+			name: match[1],
 			text: text ? [{ kind: 'text', text }] : [],
 		});
 	}
 
 	return tags;
+}
+
+function isTagLine(line: string): boolean {
+	return /^@\w+\b/.test(line);
+}
+
+function trimEmptyLines(lines: string[]): string[] {
+	let start = 0;
+	let end = lines.length;
+
+	while (start < end && lines[start].trim() === '') start++;
+	while (end > start && lines[end - 1].trim() === '') end--;
+
+	return lines.slice(start, end);
+}
+
+function shouldPreserveTagLineBreaks(lines: readonly string[]): boolean {
+	return lines.some(isMarkdownTableLine);
+}
+
+function isMarkdownTableLine(line: string): boolean {
+	return /^\|.*\|$/.test(line);
 }
 
 function dedupeTags(tags: readonly TS.JSDocTagInfo[]): TS.JSDocTagInfo[] {

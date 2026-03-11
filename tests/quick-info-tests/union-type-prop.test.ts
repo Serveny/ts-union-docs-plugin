@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProxyFromCase, documentationToText } from '../setup';
+import { createProxyFromCase, documentationToText, tagText } from '../setup';
 
 const { proxy, absolutePath, code } = createProxyFromCase(
 	'tests/cases/union-type-prop.ts'
@@ -24,7 +24,7 @@ describe('Union Type Property Docs Tests', () => {
 		const cursorPos = code.indexOf(`public colorRed`) + 8;
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
-		expect(documentationToText(result)).toContain('> Primary color');
+		expect(documentationToText(result)).toContain('Primary color');
 	});
 
 	it('should find doc comment of union type const with green', () => {
@@ -32,7 +32,8 @@ describe('Union Type Property Docs Tests', () => {
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
 		expect(documentationToText(result)).toContain(
-			`> Secondary color with some regex symbols\n> \n> \n> _@color_ green\n>`
+			'Secondary color with some regex symbols'
 		);
+		expect(tagText(result?.tags, 'color')).toBe('green');
 	});
 });

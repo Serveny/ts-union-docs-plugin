@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProxyFromCase, tagsToText } from '../setup';
+import { createProxyFromCase, tagText, tagsToText } from '../setup';
 
 const { proxy, absolutePath, code } = createProxyFromCase(
 	'tests/cases/union-type-param.ts'
@@ -17,16 +17,17 @@ describe('Union Type Param Docs Tests', () => {
 		const cursorPos = code.indexOf(`logColor('red')`);
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
-		expect(tagsToText(result!)).toContain('color\n> Primary color\n');
+		expect(tagText(result?.tags, 'param')).toContain('color\n> Primary color');
 	});
 
 	it('should find second js doc comment of union type with regex symbols inside string', () => {
 		const cursorPos = code.indexOf(`logColor('green/[.*+?^\${}()|[]-]/g');`);
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
-		expect(tagsToText(result!)).toContain(
-			'color\n> Secondary color with some regex symbols\n> \n> \n> _@color_ green'
-		);
+		const paramText = tagText(result?.tags, 'param') ?? '';
+		expect(paramText).toContain('color\n> Secondary color with some regex symbols');
+		expect(paramText).toContain('> _@color_ green');
+		expect(result?.tags?.some((tag) => tag.name === 'color')).toBe(false);
 	});
 
 	it('should find nothing', () => {
@@ -41,16 +42,17 @@ describe('Union Type Param Docs Tests', () => {
 		const cursorPos = code.indexOf(`logColor('A100')`);
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
-		expect(tagsToText(result!)).toContain(
-			'color\n> A number\n> \n> \n> _@range_ 1-4'
-		);
+		const paramText = tagText(result?.tags, 'param') ?? '';
+		expect(paramText).toContain('color\n> A number');
+		expect(paramText).toContain('> _@range_ 1-4');
+		expect(result?.tags?.some((tag) => tag.name === 'range')).toBe(false);
 	});
 
 	it('should find fith js doc comment of union type template containing two numbers', () => {
 		const cursorPos = code.indexOf(`logColor('1B27')`);
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
-		expect(tagsToText(result!)).toContain(
+		expect(tagText(result?.tags, 'param')).toContain(
 			'color\n> Two numbers in one template'
 		);
 	});

@@ -1,9 +1,15 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
-import { SupportedType, UnionInfo } from './info';
+import { getTagText, SupportedType, UnionInfo } from './info';
 
-type TagIdx = {
+type IndexedTag = {
 	tag: TS.JSDocTagInfo;
 	idx: number;
+};
+
+type TagSections = {
+	before: TS.JSDocTagInfo[];
+	params: IndexedTag[];
+	after: TS.JSDocTagInfo[];
 };
 
 export function addExtraQuickInfo(
@@ -11,13 +17,14 @@ export function addExtraQuickInfo(
 	quickInfo: TS.QuickInfo,
 	typesInfo: UnionInfo[]
 ) {
-	if (typesInfo.length === 0) return;
+	const primaryInfo = typesInfo[0];
+	if (!primaryInfo) return;
 
-	switch (typesInfo[0].type) {
+	switch (primaryInfo.type) {
 		case SupportedType.Parameter:
-			return addExtraJDocTagInfo(quickInfo, typesInfo);
+			return addExtraParamTagInfo(quickInfo, typesInfo);
 		case SupportedType.Variable:
-			return addExtraDocumentation(quickInfo, typesInfo);
+			return addExtraVariableQuickInfo(quickInfo, typesInfo);
 	}
 }
 
@@ -44,52 +51,96 @@ export function createFallbackQuickInfo(
 	};
 }
 
-function addExtraJDocTagInfo(quickInfo: TS.QuickInfo, typesInfo: UnionInfo[]) {
-	if (!quickInfo.tags) quickInfo.tags = [];
-
-	const tagIdxs: TagIdx[] =
-		quickInfo.tags
-			.map((tag, idx) => ({ tag, idx }))
-			.filter((entry) => entry.tag.name === 'param');
-
-	const newTags = [
-		...(tagIdxs.length > 0
-			? quickInfo.tags.filter((_, i) => i < tagIdxs[0].idx)
-			: quickInfo.tags),
-	];
-
-	for (const typeInfo of typesInfo) {
-		const jsDocTag = findJsDocParamTagByName(tagIdxs, typeInfo.name);
-		if ((typeInfo.docComment?.length ?? 0) === 0) continue;
-
-		const tag = jsDocTag?.tag ?? defaultParamJSDocTag(typeInfo.name);
-		newTags.push(addTagInfo(tag, typeInfo));
-	}
-
-	const lastParamTagIdx =
-		tagIdxs.length === 0 ? 0 : (tagIdxs[tagIdxs.length - 1]?.idx ?? 0);
-	if (quickInfo.tags.length - 1 > lastParamTagIdx)
-		newTags.push(...quickInfo.tags.filter((_, i) => i > lastParamTagIdx));
-
-	quickInfo.tags = newTags;
+function addExtraParamTagInfo(quickInfo: TS.QuickInfo, typesInfo: UnionInfo[]) {
+	const { before, params, after } = splitParamTagSections(quickInfo.tags);
+	const mergedParamTags = buildParamTags(typesInfo, params);
+	quickInfo.tags = dedupeTagInfos([...before, ...mergedParamTags, ...after]);
 }
 
-function addExtraDocumentation(
-	quickInfo: TS.QuickInfo,
-	typesInfo: UnionInfo[]
-) {
+function addExtraVariableQuickInfo(quickInfo: TS.QuickInfo, typesInfo: UnionInfo[]) {
+	addExtraDocumentation(quickInfo, typesInfo);
+	appendUnionTags(quickInfo, typesInfo);
+}
+
+function addExtraDocumentation(quickInfo: TS.QuickInfo, typesInfo: UnionInfo[]) {
 	const newDocs = quickInfo.documentation ? [...quickInfo.documentation] : [];
 
 	for (const typeInfo of typesInfo) {
-		if ((typeInfo.docComment?.length ?? 0) === 0) continue;
-		newDocs.push(
-			createMarkdownDisplayPart(formatDocComment(typeInfo.docComment ?? []))
-		);
+		const docComment = typeInfo.docComment;
+		if (!docComment || docComment.length === 0) continue;
+		if (newDocs.length > 0) newDocs.push(createTextDisplayPart('\n'));
+		newDocs.push(createMarkdownDisplayPart(formatDocComment(docComment)));
 	}
 	quickInfo.documentation = newDocs;
 }
 
-function findJsDocParamTagByName(tags: TagIdx[], name: string): TagIdx | null {
+function appendUnionTags(quickInfo: TS.QuickInfo, typesInfo: UnionInfo[]) {
+	const tags = quickInfo.tags ? [...quickInfo.tags] : [];
+	for (const typeInfo of typesInfo) tags.push(...cloneTags(typeInfo.tags));
+	quickInfo.tags = dedupeTagInfos(tags);
+}
+
+function splitParamTagSections(
+	tags: readonly TS.JSDocTagInfo[] | undefined
+): TagSections {
+	const allTags = tags ? [...tags] : [];
+	const params = indexTags(allTags, 'param');
+	if (params.length === 0) {
+		return {
+			before: allTags,
+			params,
+			after: [],
+		};
+	}
+
+	const firstParamIndex = params[0]!.idx;
+	const lastParamIndex = params[params.length - 1]!.idx;
+
+	return {
+		before: allTags.slice(0, firstParamIndex),
+		params,
+		after: allTags.slice(lastParamIndex + 1),
+	};
+}
+
+function indexTags(
+	tags: readonly TS.JSDocTagInfo[],
+	name: string
+): IndexedTag[] {
+	return tags
+		.map((tag, idx) => ({ tag, idx }))
+		.filter((entry) => entry.tag.name === name);
+}
+
+function buildParamTags(
+	typesInfo: UnionInfo[],
+	existingParamTags: IndexedTag[]
+): TS.JSDocTagInfo[] {
+	const paramTags: TS.JSDocTagInfo[] = [];
+
+	for (const typeInfo of typesInfo) {
+		if (!hasDocMetadata(typeInfo)) continue;
+
+		const jsDocTag = findJsDocParamTagByName(existingParamTags, typeInfo.name);
+		const tag = jsDocTag?.tag ?? defaultParamJSDocTag(typeInfo.name);
+		paramTags.push(
+			addParamTagDescription(tag, typeInfo.docComment, typeInfo.tags)
+		);
+	}
+
+	return paramTags;
+}
+
+function hasDocMetadata(
+	typeInfo: Pick<UnionInfo, 'docComment' | 'tags'>
+): boolean {
+	return (typeInfo.docComment?.length ?? 0) > 0 || (typeInfo.tags?.length ?? 0) > 0;
+}
+
+function findJsDocParamTagByName(
+	tags: IndexedTag[],
+	name: string
+): IndexedTag | null {
 	return (
 		tags.find(({ tag }) =>
 			tag.text?.some(
@@ -106,7 +157,7 @@ function defaultParamJSDocTag(name: string): TS.JSDocTagInfo {
 		name: 'param',
 		text: [
 			{
-				kind: 'keyword',
+				kind: 'parameterName',
 				text: name,
 			},
 		],
@@ -120,18 +171,94 @@ function createMarkdownDisplayPart(mdText: string): TS.SymbolDisplayPart {
 	} as TS.SymbolDisplayPart;
 }
 
-function addTagInfo(
+function addParamTagDescription(
 	oldTag: TS.JSDocTagInfo,
-	typeInfo: UnionInfo | undefined
+	docComment: string[] | undefined,
+	extraTags: readonly TS.JSDocTagInfo[] | undefined
 ): TS.JSDocTagInfo {
-	if (!typeInfo?.docComment) return oldTag;
-
-	const newTag: TS.JSDocTagInfo = JSON.parse(JSON.stringify(oldTag));
+	const newTag = cloneTag(oldTag);
+	const docText = formatQuotedParamDocComment(docComment, extraTags);
+	if (!docText) return newTag;
 	if (!newTag.text) newTag.text = [];
-	newTag.text.push(createMarkdownDisplayPart(formatDocComment(typeInfo.docComment)));
+	if (newTag.text.length > 0) {
+		newTag.text.push(createTextDisplayPart('\n'));
+	}
+	newTag.text.push(createMarkdownDisplayPart(docText));
 	return newTag;
 }
 
 function formatDocComment(lines: string[]): string {
-	return lines.map((line, index) => (index > 0 ? `> ${line}` : line)).join('\n');
+	return lines.join('\n');
+}
+
+function formatQuotedParamDocComment(
+	lines: string[] | undefined,
+	extraTags: readonly TS.JSDocTagInfo[] | undefined
+): string {
+	const parts: string[] = [];
+	if (lines && lines.length > 0) {
+		parts.push(...lines.map((line) => `> ${line}`));
+	}
+	if (extraTags && extraTags.length > 0) {
+		if (parts.length > 0) parts.push('> ');
+		for (const [index, tag] of extraTags.entries()) {
+			if (index > 0) parts.push('> ');
+			parts.push(...formatQuotedParamTag(tag));
+		}
+	}
+	return parts.join('\n');
+}
+
+function formatQuotedParamTag(tag: TS.JSDocTagInfo): string[] {
+	const text = getTagText(tag);
+	if (!text) return [`> _@${tag.name}_`];
+
+	const lines = text.split('\n');
+	const [firstLine, ...restLines] = lines;
+	if (isMarkdownTableLine(firstLine)) {
+		return ['> _@' + tag.name + '_', '> ', ...lines.map((line) => `> ${line}`)];
+	}
+
+	return [
+		`> _@${tag.name}_ ${firstLine}`,
+		...restLines.map((line) => `> ${line}`),
+	];
+}
+
+function createTextDisplayPart(text: string): TS.SymbolDisplayPart {
+	return {
+		text,
+		kind: 'text',
+	} as TS.SymbolDisplayPart;
+}
+
+function isMarkdownTableLine(line: string): boolean {
+	return /^\|.*\|$/.test(line);
+}
+
+function cloneTags(
+	tags: readonly TS.JSDocTagInfo[] | undefined
+): TS.JSDocTagInfo[] {
+	return tags?.map(cloneTag) ?? [];
+}
+
+function cloneTag(tag: TS.JSDocTagInfo): TS.JSDocTagInfo {
+	return {
+		name: tag.name,
+		text: tag.text?.map((part) => ({ ...part })),
+	};
+}
+
+function dedupeTagInfos(tags: readonly TS.JSDocTagInfo[]): TS.JSDocTagInfo[] {
+	const seen = new Set<string>();
+	const unique: TS.JSDocTagInfo[] = [];
+
+	for (const tag of tags) {
+		const key = `${tag.name}:${getTagText(tag)}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		unique.push(tag);
+	}
+
+	return unique;
 }

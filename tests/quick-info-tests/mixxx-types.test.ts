@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProxyFromCase, tagsToText } from '../setup';
+import { createProxyFromCase, tagText, tagsToText } from '../setup';
 
 const { proxy, absolutePath, code } = createProxyFromCase(
 	'tests/cases/mixxx-types.ts'
@@ -15,23 +15,20 @@ describe('Mixxx Types Param Docs Tests', () => {
 
 		const text = tagsToText(result);
 		expect(text).toContain(
-			'> The [App] group contains controls that do not belong to a specific channel, the mixer or the effects engine.'
+			'The [App] group contains controls that do not belong to a specific channel, the mixer or the effects engine.'
 		);
-		expect(text).toContain(`Name of the control e.g. "play_indicator"
-> A throttled timer that provides the time elapsed in seconds since Mixxx was started.
-> This control is updated at a rate of 20 Hz (every 50 milliseconds). It is the preferred timer for scripting animations in controller mappings (like VU meters or spinning animations) as it provides a smooth visual result without the performance overhead of [App],gui_tick_full_period_s.
-> Only available when using the legacy GUI (not the QML interface).
-> 
-> 
-> _@groups_ [App]
-> 
-> _@range_ 0.0 .. n
-> 
-> _@feedback_ None
-> 
-> _@since_ New in version 2.4.0.
-> 
-> _@readonly_`);
+		expect(tagText(result?.tags, 'param')).toContain(
+			'Name of the control e.g. "play_indicator"\n> A throttled timer that provides the time elapsed in seconds since Mixxx was started.'
+		);
+		expect(tagText(result?.tags, 'param')).toContain(
+			'> _@groups_ [App]\n> \n> _@range_ 0.0 .. n'
+		);
+		expect(tagText(result?.tags, 'param')).toContain('> _@feedback_ None');
+		expect(tagText(result?.tags, 'param')).toContain(
+			'> _@since_ New in version 2.4.0.'
+		);
+		expect(tagText(result?.tags, 'param')).toContain('> _@readonly_');
+		expect(result?.tags?.some((tag) => tag.name === 'groups')).toBe(false);
 	});
 
 	it('should find beatloop_size docs', () => {
@@ -43,22 +40,19 @@ describe('Mixxx Types Param Docs Tests', () => {
 		expect(text).toContain(
 			'Each deck in Mixxx corresponds to a [ChannelN] group. Whenever you see [ChannelN], think “Deck N”. N can range from 1 to the number of active decks in Mixxx.'
 		);
-		expect(text).toContain(`Name of the control e.g. "play_indicator"
-> Set the length of the loop in beats that will get set with
-> beatloop_activate and
-> beatlooproll_activate.
-> Changing this will resize an existing loop if the length of the loop matches
-> beatloop_size.
-> If the loaded track has no beat grid, seconds are used instead of beats.
-> 
-> 
-> _@groups_ [ChannelN], [PreviewDeckN], [SamplerN]
-> 
-> _@range_ positive real number
-> 
-> _@feedback_ Beatloop size spinbox and possibly loop section on waveform
-> 
-> _@since_ New in version 2.1.0.`);
+		expect(tagText(result?.tags, 'param')).toContain(
+			'Name of the control e.g. "play_indicator"\n> Set the length of the loop in beats that will get set with'
+		);
+		expect(tagText(result?.tags, 'param')).toContain(
+			'> _@groups_ [ChannelN], [PreviewDeckN], [SamplerN]\n> \n> _@range_ positive real number'
+		);
+		expect(tagText(result?.tags, 'param')).toContain(
+			'Beatloop size spinbox'
+		);
+		expect(tagText(result?.tags, 'param')).toContain(
+			'> _@since_ New in version 2.1.0.'
+		);
+		expect(result?.tags?.some((tag) => tag.name === 'groups')).toBe(false);
 	});
 
 	it('should find rate_up_small docs', () => {
@@ -72,21 +66,17 @@ describe('Mixxx Types Param Docs Tests', () => {
 		expect(text).toContain(
 			'Sample decks are identical to regular decks, but are used for playing samples; their controls mirror [ChannelN].'
 		);
-		expect(text).toContain(`Name of the control e.g. "play_indicator"
-> Speed control
-> This is a ControlPotMeter control.
-> 
-> 
-> _@groups_ [ChannelN], [PreviewDeckN], [SamplerN]
-> 
-> _@range_ -1.0..1.0
-> 
-> _@feedback_ Speed slider
-> 
-> _@kind_ pot meter control
-> 
-> 
-> Increases the value by smaller step, sets the speed one small step higher (1 % default)`);
+		expect(tagText(result?.tags, 'param')).toContain(
+			'Name of the control e.g. "play_indicator"\n> Speed control\n> This is a ControlPotMeter control.'
+		);
+		expect(tagText(result?.tags, 'param')).toContain(
+			'> _@groups_ [ChannelN], [PreviewDeckN], [SamplerN]\n> \n> _@range_ -1.0..1.0'
+		);
+		expect(tagText(result?.tags, 'param')).toContain('> _@feedback_ Speed slider');
+		expect(tagText(result?.tags, 'param')).toContain(
+			'> _@kind_ pot meter control'
+		);
+		expect(result?.tags?.some((tag) => tag.name === 'groups')).toBe(false);
 	});
 
 	it('should find parameter1_down_small docs', () => {
@@ -100,19 +90,29 @@ describe('Mixxx Types Param Docs Tests', () => {
 		expect(text).toContain(
 			'The [EffectRack1_EffectUnitN_EffectM] group contains controls for a single effect slot within an effects unit.'
 		);
-		expect(text).toContain(`Name of the control e.g. "play_indicator"
-> The scaled value of the Kth parameter.
-> See the Parameter Values section for more information.
-> This is a ControlPotMeter control.
-> 
-> 
-> _@groups_ [EffectRack1_EffectUnitN_EffectM], [EqualizerRack1_[ChannelI]_Effect1], [QuickEffectRack1_[ChannelI]_Effect1]
-> 
-> _@range_ double
-> 
-> _@kind_ pot meter control
-> 
-> 
-> Decreases the value by smaller step, sets the speed one small step lower (1 % default)`);
+		expect(tagText(result?.tags, 'param')).toContain(
+			'Name of the control e.g. "play_indicator"\n> The scaled value of the Kth parameter.'
+		);
+		expect(tagText(result?.tags, 'param')).toContain(
+			'> _@groups_ [EffectRack1_EffectUnitN_EffectM], [EqualizerRack1_[ChannelI]_Effect1], [QuickEffectRack1_[ChannelI]_Effect1]\n> \n> _@range_ double'
+		);
+		expect(tagText(result?.tags, 'param')).toContain(
+			'> _@kind_ pot meter control'
+		);
+		expect(result?.tags?.some((tag) => tag.name === 'groups')).toBe(false);
+	});
+
+	it('should render multiline range tables inside the param hover', () => {
+		const cursorPos = code.indexOf(`getValue('[Channel1]', 'cue_mode')`);
+		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
+		expect(result).toBeDefined();
+
+		const paramText = tagText(result?.tags, 'param') ?? '';
+		expect(paramText).toContain('> _@range_');
+		expect(paramText).toContain('> |Value|compatible hardware|');
+		expect(paramText).toContain('> |---|---|');
+		expect(paramText).toContain('> |1.0|Pioneer mode|');
+		expect(paramText).toContain('> |5.0|CUP (Cue + Play) mode|');
+		expect(paramText).toContain('> \n> _@feedback_ None');
 	});
 });

@@ -303,7 +303,10 @@ class TypeInfoFactory {
     const program = this.getProgram();
     if (!program) return null;
     if (!this.sourceFileCache.has(fileName)) {
-      this.sourceFileCache.set(fileName, program.getSourceFile(fileName) ?? null);
+      this.sourceFileCache.set(
+        fileName,
+        program.getSourceFile(fileName) ?? null
+      );
     }
     return this.sourceFileCache.get(fileName) ?? null;
   }
@@ -624,37 +627,67 @@ function getLeadingComment(ts, text, pos) {
   };
 }
 function prepareJSDocMetadata(rawComment) {
+  const normalizedLines = normalizeJSDocLines(rawComment);
   return {
-    docComment: prepareJSDocText(rawComment),
-    tags: extractDeprecatedTags(rawComment)
+    docComment: extractDocComment(normalizedLines),
+    tags: extractJSDocTags(normalizedLines)
   };
 }
-function prepareJSDocText(rawComment) {
-  return rawComment.replace("/**", "").replace("*/", "").split("\n").map((line) => line.trim().replace(/^\* ?/, "")).map((line) => line.replace(/@(\w+)/g, (_, tag) => `
-> _@${tag}_`));
+function normalizeJSDocLines(rawComment) {
+  return rawComment.replace("/**", "").replace("*/", "").split("\n").map((line) => line.trim().replace(/^\* ?/, ""));
 }
-function extractDeprecatedTags(rawComment) {
-  const normalizedLines = rawComment.replace("/**", "").replace("*/", "").split("\n").map((line) => line.trim().replace(/^\* ?/, ""));
+function extractDocComment(normalizedLines) {
+  const docComment = [];
+  for (let i = 0; i < normalizedLines.length; i++) {
+    const line = normalizedLines[i];
+    if (isTagLine(line)) {
+      for (let j = i + 1; j < normalizedLines.length; j++) {
+        if (isTagLine(normalizedLines[j])) break;
+        i = j;
+      }
+      continue;
+    }
+    docComment.push(line);
+  }
+  return trimEmptyLines(docComment);
+}
+function extractJSDocTags(normalizedLines) {
   const tags = [];
   for (let i = 0; i < normalizedLines.length; i++) {
     const line = normalizedLines[i];
-    const match = line.match(/^@deprecated\b(?:\s+(.*))?$/);
+    const match = line.match(/^@(\w+)\b(?:\s+(.*))?$/);
     if (!match) continue;
-    const tagLines = [match[1]?.trim() ?? ""];
+    const tagLines = [match[2]?.trim() ?? ""];
     for (let j = i + 1; j < normalizedLines.length; j++) {
-      const continuationLine = normalizedLines[j].trim();
-      if (continuationLine.startsWith("@")) break;
-      if (continuationLine === "") continue;
+      const continuationLine = normalizedLines[j];
+      if (isTagLine(continuationLine)) break;
       tagLines.push(continuationLine);
       i = j;
     }
-    const text = tagLines.join(" ").trim();
+    const normalizedTagLines = trimEmptyLines(tagLines).map((part) => part.trim());
+    const text = shouldPreserveTagLineBreaks(normalizedTagLines) ? normalizedTagLines.join("\n").trim() : normalizedTagLines.join(" ").trim();
     tags.push({
-      name: "deprecated",
+      name: match[1],
       text: text ? [{ kind: "text", text }] : []
     });
   }
   return tags;
+}
+function isTagLine(line) {
+  return /^@\w+\b/.test(line);
+}
+function trimEmptyLines(lines) {
+  let start = 0;
+  let end = lines.length;
+  while (start < end && lines[start].trim() === "") start++;
+  while (end > start && lines[end - 1].trim() === "") end--;
+  return lines.slice(start, end);
+}
+function shouldPreserveTagLineBreaks(lines) {
+  return lines.some(isMarkdownTableLine$1);
+}
+function isMarkdownTableLine$1(line) {
+  return /^\|.*\|$/.test(line);
 }
 function dedupeTags(tags) {
   const seen = /* @__PURE__ */ new Set();
@@ -807,12 +840,13 @@ function formatDeprecatedMessage(nodeText, deprecatedTag) {
   return tagText ? `${nodeText} is deprecated. ${tagText}` : `${nodeText} is deprecated.`;
 }
 function addExtraQuickInfo(_ts, quickInfo, typesInfo) {
-  if (typesInfo.length === 0) return;
-  switch (typesInfo[0].type) {
+  const primaryInfo = typesInfo[0];
+  if (!primaryInfo) return;
+  switch (primaryInfo.type) {
     case SupportedType.Parameter:
-      return addExtraJDocTagInfo(quickInfo, typesInfo);
+      return addExtraParamTagInfo(quickInfo, typesInfo);
     case SupportedType.Variable:
-      return addExtraDocumentation(quickInfo, typesInfo);
+      return addExtraVariableQuickInfo(quickInfo, typesInfo);
   }
 }
 function createFallbackQuickInfo(ts, pos, typeInfo) {
@@ -831,32 +865,65 @@ function createFallbackQuickInfo(ts, pos, typeInfo) {
     ] : void 0
   };
 }
-function addExtraJDocTagInfo(quickInfo, typesInfo) {
-  if (!quickInfo.tags) quickInfo.tags = [];
-  const tagIdxs = quickInfo.tags.map((tag, idx) => ({ tag, idx })).filter((entry) => entry.tag.name === "param");
-  const newTags = [
-    ...tagIdxs.length > 0 ? quickInfo.tags.filter((_, i) => i < tagIdxs[0].idx) : quickInfo.tags
-  ];
-  for (const typeInfo of typesInfo) {
-    const jsDocTag = findJsDocParamTagByName(tagIdxs, typeInfo.name);
-    if ((typeInfo.docComment?.length ?? 0) === 0) continue;
-    const tag = jsDocTag?.tag ?? defaultParamJSDocTag(typeInfo.name);
-    newTags.push(addTagInfo(tag, typeInfo));
-  }
-  const lastParamTagIdx = tagIdxs.length === 0 ? 0 : tagIdxs[tagIdxs.length - 1]?.idx ?? 0;
-  if (quickInfo.tags.length - 1 > lastParamTagIdx)
-    newTags.push(...quickInfo.tags.filter((_, i) => i > lastParamTagIdx));
-  quickInfo.tags = newTags;
+function addExtraParamTagInfo(quickInfo, typesInfo) {
+  const { before, params, after } = splitParamTagSections(quickInfo.tags);
+  const mergedParamTags = buildParamTags(typesInfo, params);
+  quickInfo.tags = dedupeTagInfos([...before, ...mergedParamTags, ...after]);
+}
+function addExtraVariableQuickInfo(quickInfo, typesInfo) {
+  addExtraDocumentation(quickInfo, typesInfo);
+  appendUnionTags(quickInfo, typesInfo);
 }
 function addExtraDocumentation(quickInfo, typesInfo) {
   const newDocs = quickInfo.documentation ? [...quickInfo.documentation] : [];
   for (const typeInfo of typesInfo) {
-    if ((typeInfo.docComment?.length ?? 0) === 0) continue;
-    newDocs.push(
-      createMarkdownDisplayPart(formatDocComment(typeInfo.docComment ?? []))
-    );
+    const docComment = typeInfo.docComment;
+    if (!docComment || docComment.length === 0) continue;
+    if (newDocs.length > 0) newDocs.push(createTextDisplayPart("\n"));
+    newDocs.push(createMarkdownDisplayPart(formatDocComment(docComment)));
   }
   quickInfo.documentation = newDocs;
+}
+function appendUnionTags(quickInfo, typesInfo) {
+  const tags = quickInfo.tags ? [...quickInfo.tags] : [];
+  for (const typeInfo of typesInfo) tags.push(...cloneTags(typeInfo.tags));
+  quickInfo.tags = dedupeTagInfos(tags);
+}
+function splitParamTagSections(tags) {
+  const allTags = tags ? [...tags] : [];
+  const params = indexTags(allTags, "param");
+  if (params.length === 0) {
+    return {
+      before: allTags,
+      params,
+      after: []
+    };
+  }
+  const firstParamIndex = params[0].idx;
+  const lastParamIndex = params[params.length - 1].idx;
+  return {
+    before: allTags.slice(0, firstParamIndex),
+    params,
+    after: allTags.slice(lastParamIndex + 1)
+  };
+}
+function indexTags(tags, name) {
+  return tags.map((tag, idx) => ({ tag, idx })).filter((entry) => entry.tag.name === name);
+}
+function buildParamTags(typesInfo, existingParamTags) {
+  const paramTags = [];
+  for (const typeInfo of typesInfo) {
+    if (!hasDocMetadata(typeInfo)) continue;
+    const jsDocTag = findJsDocParamTagByName(existingParamTags, typeInfo.name);
+    const tag = jsDocTag?.tag ?? defaultParamJSDocTag(typeInfo.name);
+    paramTags.push(
+      addParamTagDescription(tag, typeInfo.docComment, typeInfo.tags)
+    );
+  }
+  return paramTags;
+}
+function hasDocMetadata(typeInfo) {
+  return (typeInfo.docComment?.length ?? 0) > 0 || (typeInfo.tags?.length ?? 0) > 0;
 }
 function findJsDocParamTagByName(tags, name) {
   return tags.find(
@@ -870,7 +937,7 @@ function defaultParamJSDocTag(name) {
     name: "param",
     text: [
       {
-        kind: "keyword",
+        kind: "parameterName",
         text: name
       }
     ]
@@ -882,15 +949,75 @@ function createMarkdownDisplayPart(mdText) {
     kind: "markdown"
   };
 }
-function addTagInfo(oldTag, typeInfo) {
-  if (!typeInfo?.docComment) return oldTag;
-  const newTag = JSON.parse(JSON.stringify(oldTag));
+function addParamTagDescription(oldTag, docComment, extraTags) {
+  const newTag = cloneTag(oldTag);
+  const docText = formatQuotedParamDocComment(docComment, extraTags);
+  if (!docText) return newTag;
   if (!newTag.text) newTag.text = [];
-  newTag.text.push(createMarkdownDisplayPart(formatDocComment(typeInfo.docComment)));
+  if (newTag.text.length > 0) {
+    newTag.text.push(createTextDisplayPart("\n"));
+  }
+  newTag.text.push(createMarkdownDisplayPart(docText));
   return newTag;
 }
 function formatDocComment(lines) {
-  return lines.map((line, index) => index > 0 ? `> ${line}` : line).join("\n");
+  return lines.join("\n");
+}
+function formatQuotedParamDocComment(lines, extraTags) {
+  const parts = [];
+  if (lines && lines.length > 0) {
+    parts.push(...lines.map((line) => `> ${line}`));
+  }
+  if (extraTags && extraTags.length > 0) {
+    if (parts.length > 0) parts.push("> ");
+    for (const [index, tag] of extraTags.entries()) {
+      if (index > 0) parts.push("> ");
+      parts.push(...formatQuotedParamTag(tag));
+    }
+  }
+  return parts.join("\n");
+}
+function formatQuotedParamTag(tag) {
+  const text = getTagText(tag);
+  if (!text) return [`> _@${tag.name}_`];
+  const lines = text.split("\n");
+  const [firstLine, ...restLines] = lines;
+  if (isMarkdownTableLine(firstLine)) {
+    return ["> _@" + tag.name + "_", "> ", ...lines.map((line) => `> ${line}`)];
+  }
+  return [
+    `> _@${tag.name}_ ${firstLine}`,
+    ...restLines.map((line) => `> ${line}`)
+  ];
+}
+function createTextDisplayPart(text) {
+  return {
+    text,
+    kind: "text"
+  };
+}
+function isMarkdownTableLine(line) {
+  return /^\|.*\|$/.test(line);
+}
+function cloneTags(tags) {
+  return tags?.map(cloneTag) ?? [];
+}
+function cloneTag(tag) {
+  return {
+    name: tag.name,
+    text: tag.text?.map((part) => ({ ...part }))
+  };
+}
+function dedupeTagInfos(tags) {
+  const seen = /* @__PURE__ */ new Set();
+  const unique = [];
+  for (const tag of tags) {
+    const key = `${tag.name}:${getTagText(tag)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(tag);
+  }
+  return unique;
 }
 class UnionTypeDocsPlugin {
   constructor(ts) {
