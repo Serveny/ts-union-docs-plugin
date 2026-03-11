@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0]
+
+- **Added** Deprecated union member diagnostics and completion coverage for deprecated members
+- **Improved Quick Info** Refined doc assembly to avoid duplicate non-parameter tags
+- **Fixed** Quick Info for union arguments passed through `const` variables
+- **Fixed** Quick Info for generic indexed-access union members
+- **Tests** Refreshed Mixxx fixtures and expanded Quick Info, completion, and diagnostic coverage
+
 ## [0.2.0]
 
 - **Added** Support for constructor union parameter JSDoc
