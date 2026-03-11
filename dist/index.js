@@ -1187,7 +1187,7 @@ function formatDocComment(lines) {
 function formatQuotedParamDocComment(lines, extraTags) {
   const parts = [];
   if (lines && lines.length > 0) {
-    parts.push(...lines.map((line) => `> ${line}`));
+    parts.push(...quoteLines(lines));
   }
   if (extraTags && extraTags.length > 0) {
     if (parts.length > 0) parts.push("> ");
@@ -1206,10 +1206,7 @@ function formatQuotedParamTag(tag) {
   if (isMarkdownTableLine(firstLine)) {
     return ["> _@" + tag.name + "_", "> ", ...lines.map((line) => `> ${line}`)];
   }
-  return [
-    `> _@${tag.name}_ ${firstLine}`,
-    ...restLines.map((line) => `> ${line}`)
-  ];
+  return quoteLines([`_@${tag.name}_ ${firstLine}`, ...restLines]);
 }
 function createTextDisplayPart(text) {
   return {
@@ -1219,6 +1216,12 @@ function createTextDisplayPart(text) {
 }
 function isMarkdownTableLine(line) {
   return /^\|.*\|$/.test(line);
+}
+function quoteLines(lines) {
+  return lines.map((line, index) => {
+    const needsHardBreak = index < lines.length - 1 && line.trim() !== "" && lines[index + 1].trim() !== "" && !isMarkdownTableLine(line) && !isMarkdownTableLine(lines[index + 1]);
+    return `> ${line}${needsHardBreak ? "  " : ""}`;
+  });
 }
 function cloneTags(tags) {
   return tags?.map(cloneTag) ?? [];

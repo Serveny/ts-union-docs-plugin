@@ -25,7 +25,9 @@ describe('Union Type Param Docs Tests', () => {
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
 		const paramText = tagText(result?.tags, 'param') ?? '';
-		expect(paramText).toContain('color\n> Secondary color with some regex symbols');
+		expect(paramText).toContain(
+			'color\n> Secondary color with some regex symbols\n> Some Info in another line'
+		);
 		expect(paramText).toContain('> _@color_ green');
 		expect(result?.tags?.some((tag) => tag.name === 'color')).toBe(false);
 	});

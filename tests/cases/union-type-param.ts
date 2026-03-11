@@ -9,6 +9,7 @@ export type Color =
 
 	/**
 	 * Secondary color with some regex symbols
+	 * Some Info in another line
 	 *
 	 * @color green
 	 */

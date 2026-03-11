@@ -60,7 +60,8 @@ export function createProxyFromCase(relativeFilePath: string) {
 export function tagsToText(quickInfo?: ts.QuickInfo): string | undefined {
 	return quickInfo?.tags
 		?.map((tag) => tag.text?.map((t) => t.text)?.join(''))
-		.join('');
+		.join('')
+		.replace(/ {2}\n/g, '\n');
 }
 
 export function tagText(
@@ -70,7 +71,8 @@ export function tagText(
 	return tags
 		?.filter((tag) => tag.name === name)
 		.map((tag) => tag.text?.map((part) => part.text).join('') ?? '')
-		.join('\n');
+		.join('\n')
+		.replace(/ {2}\n/g, '\n');
 }
 
 export function documentationToText(quickInfo?: ts.QuickInfo) {
