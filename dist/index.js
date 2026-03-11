@@ -1,54 +1,134 @@
 "use strict";
 var SupportedType = /* @__PURE__ */ ((SupportedType2) => {
-  SupportedType2[SupportedType2["Paramter"] = 0] = "Paramter";
+  SupportedType2[SupportedType2["Parameter"] = 0] = "Parameter";
   SupportedType2[SupportedType2["Variable"] = 1] = "Variable";
   return SupportedType2;
 })(SupportedType || {});
 class UnionInfo {
-  constructor(type, name, initNode, entries, value, docComment) {
+  constructor(type, name, initNode, entries, value, docComment, tags) {
     this.type = type;
     this.name = name;
     this.initNode = initNode;
     this.entries = entries;
     this.value = value;
     this.docComment = docComment;
+    this.tags = tags;
   }
 }
 class TypeInfoFactory {
   constructor(ts, ls) {
     this.ts = ts;
     this.ls = ls;
+    this.currentProgram = null;
+    this.sourceFileCache = /* @__PURE__ */ new Map();
+    this.typeInfoCache = /* @__PURE__ */ new Map();
+    this.completionInfoCache = /* @__PURE__ */ new Map();
+    this.deprecatedUsageCache = /* @__PURE__ */ new Map();
   }
   getTypeInfo(fileName, position) {
+    const cacheKey = `${fileName}:${position}`;
+    if (this.typeInfoCache.has(cacheKey)) {
+      return this.typeInfoCache.get(cacheKey) ?? null;
+    }
     const node = this.getInitNode(fileName, position);
-    if (!node) return null;
+    const result = node ? this.getTypeInfoForNode(node) : null;
+    this.typeInfoCache.set(cacheKey, result);
+    return result;
+  }
+  getCompletionInfo(fileName, position) {
+    const cacheKey = `${fileName}:${position}`;
+    if (this.completionInfoCache.has(cacheKey)) {
+      return this.completionInfoCache.get(cacheKey) ?? null;
+    }
+    const context = this.getCompletionContext(fileName, position);
+    if (!context) {
+      this.completionInfoCache.set(cacheKey, null);
+      return null;
+    }
+    const unionMemberNodes = this.collectUnionMemberNodes(context.typeNode);
+    const templateEntries = this.filterRegexMembers(
+      unionMemberNodes,
+      context.contextualType
+    );
+    const result = {
+      initNode: context.node,
+      templateInfo: templateEntries.length === 0 ? null : this.createUnionInfo(
+        1,
+        "completion",
+        context.node,
+        templateEntries
+      ),
+      entryInfos: this.createCompletionEntryInfos(
+        context.node,
+        unionMemberNodes
+      )
+    };
+    this.completionInfoCache.set(cacheKey, result);
+    return result;
+  }
+  getCompletionEntryInfo(fileName, position, entryName) {
+    return this.getCompletionInfo(fileName, position)?.entryInfos.find(
+      (info) => info.name === entryName
+    ) ?? null;
+  }
+  getDeprecatedUsageInfos(fileName) {
+    const cached = this.deprecatedUsageCache.get(fileName);
+    if (cached) return cached;
+    const sourceFile = this.getSourceFile(fileName);
+    if (!sourceFile) return [];
+    const usages = [];
+    const seen = /* @__PURE__ */ new Set();
+    const visit = (node) => {
+      if (isDeprecatedUsageNode(this.ts, node)) {
+        for (const info of this.getTypeInfoForExpression(node)) {
+          if (!getDeprecatedTag(info.tags)) continue;
+          const start = node.getStart(sourceFile);
+          if (seen.has(start)) continue;
+          seen.add(start);
+          usages.push({ node, info });
+        }
+      }
+      this.ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    this.deprecatedUsageCache.set(fileName, usages);
+    return usages;
+  }
+  getTypeInfoForNode(node) {
+    const callExpression = this.getCallExpression(node);
+    if (callExpression) return this.getUnionParametersInfo(callExpression);
+    if (this.ts.isExpression(node)) {
+      const contextualInfo = this.getUnionExpressionInfo(node);
+      if (contextualInfo) return [contextualInfo];
+    }
     const symbol = this.checker.getSymbolAtLocation(node);
     if (!symbol) return null;
-    const callExpression = this.getCallExpression(node);
-    if (callExpression) return this.getUnionParamtersInfo(callExpression);
     const variableInfo = this.getUnionVariableInfo(symbol);
-    if (variableInfo) return [variableInfo];
-    return null;
+    return variableInfo ? [variableInfo] : null;
   }
-  getContextualTypeInfo(fileName, position) {
+  getTypeInfoForExpression(expr) {
+    const argumentInfo = this.getUnionInfoForArgument(expr);
+    if (argumentInfo) return [argumentInfo];
+    const contextualInfo = this.getUnionExpressionInfo(expr);
+    return contextualInfo ? [contextualInfo] : [];
+  }
+  getUnionInfoForArgument(expr) {
+    const callLike = this.findCallLikeExpression(expr);
+    if (!callLike) return null;
+    const argIndex = callLike.arguments?.indexOf(expr) ?? -1;
+    if (argIndex < 0) return null;
+    const signature = this.checker.getResolvedSignature(callLike);
+    const paramSymbol = signature?.getParameters()[argIndex];
+    return paramSymbol ? this.getUnionInfo(paramSymbol, expr) : null;
+  }
+  getCompletionContext(fileName, position) {
     const node = this.getInitNode(fileName, position);
     if (!node || !this.ts.isExpression(node)) return null;
     const contextualType = this.checker.getContextualType(node);
     if (!contextualType) return null;
     const typeNode = this.resolveTypeNode(node, contextualType);
     if (!typeNode) return null;
-    const unionMemberNodes = this.collectUnionMemberNodes(typeNode);
-    const filteredNodes = this.filterRegexMembers(
-      unionMemberNodes,
-      contextualType
-    );
-    return new UnionInfo(
-      1,
-      "completion",
-      node,
-      filteredNodes,
-      void 0
-    );
+    return { node, contextualType, typeNode };
   }
   resolveTypeNode(node, contextualType) {
     const aliasNode = this.getTypeNodeFromAlias(contextualType);
@@ -59,16 +139,15 @@ class TypeInfoFactory {
   }
   getTypeNodeFromAlias(type) {
     const decl = type.aliasSymbol?.getDeclarations()?.[0];
-    if (decl && this.ts.isTypeAliasDeclaration(decl)) {
-      return decl.type;
-    }
+    if (decl && this.ts.isTypeAliasDeclaration(decl)) return decl.type;
     return null;
   }
   getTypeNodeFromParameter(node) {
     const callLike = this.findCallLikeExpression(node);
     if (!callLike) return null;
     const signature = this.checker.getResolvedSignature(callLike);
-    const argIndex = callLike.arguments?.indexOf(node) ?? 0;
+    const argIndex = callLike.arguments?.indexOf(node) ?? -1;
+    if (argIndex < 0) return null;
     const paramSymbol = signature?.getParameters()[argIndex];
     const paramDecl = paramSymbol?.getDeclarations()?.[0];
     return paramDecl && this.ts.isParameter(paramDecl) && paramDecl.type ? paramDecl.type : null;
@@ -100,19 +179,42 @@ class TypeInfoFactory {
     }
     return void 0;
   }
+  getUnionExpressionInfo(expr) {
+    const contextualType = this.checker.getContextualType(expr);
+    if (!contextualType) return null;
+    const typeNode = this.resolveTypeNode(expr, contextualType);
+    if (!typeNode) return null;
+    const unionMemberNodes = this.collectUnionMemberNodes(typeNode);
+    if (unionMemberNodes.length === 0) return null;
+    const valueNodes = unionMemberNodes.filter(
+      (entry) => this.cmp(expr, entry)
+    );
+    return this.createUnionInfo(
+      1,
+      this.getExpressionName(expr),
+      expr,
+      valueNodes,
+      this.getValue(expr)
+    );
+  }
+  getExpressionName(expr) {
+    const parent = expr.parent;
+    if (parent && (this.ts.isVariableDeclaration(parent) || this.ts.isPropertyDeclaration(parent) || this.ts.isParameter(parent)) && this.ts.isIdentifier(parent.name))
+      return parent.name.text;
+    return "value";
+  }
   getUnionInfo(paramSymbol, arg) {
     const decl = paramSymbol.valueDeclaration;
     if (!decl || !this.ts.isParameter(decl) || !decl.type) return null;
     const unionMemberNodes = this.collectUnionMemberNodes(decl.type);
     if (unionMemberNodes.length === 0) return null;
-    const value = this.getValue(arg);
     const valueNodes = unionMemberNodes.filter((entry) => this.cmp(arg, entry));
-    return new UnionInfo(
+    return this.createUnionInfo(
       0,
       paramSymbol.name,
       decl.type,
       valueNodes,
-      value
+      this.getValue(arg)
     );
   }
   getUnionVariableInfo(symbol) {
@@ -122,28 +224,108 @@ class TypeInfoFactory {
     if (!decl.type || !decl.initializer) return null;
     const unionMemberNodes = this.collectUnionMemberNodes(decl.type);
     if (unionMemberNodes.length === 0) return null;
-    const value = this.getValue(decl.initializer);
     const valueNodes = unionMemberNodes.filter(
       (entry) => this.cmp(decl.initializer, entry)
     );
-    return new UnionInfo(
+    return this.createUnionInfo(
       1,
       symbol.name,
       decl.type,
       valueNodes,
-      value
+      this.getValue(decl.initializer)
     );
   }
+  createCompletionEntryInfos(initNode, entries) {
+    const groupedEntries = /* @__PURE__ */ new Map();
+    for (const entry of entries) {
+      const entryName = this.getCompletionEntryName(entry);
+      if (!entryName) continue;
+      const group = groupedEntries.get(entryName);
+      if (group) group.push(entry);
+      else groupedEntries.set(entryName, [entry]);
+    }
+    return [...groupedEntries.entries()].map(
+      ([entryName, groupedNodes]) => this.createUnionInfo(
+        1,
+        entryName,
+        initNode,
+        groupedNodes,
+        entryName
+      )
+    );
+  }
+  createUnionInfo(type, name, initNode, entries, value) {
+    const metadata = this.collectDocMetadata(entries);
+    return new UnionInfo(
+      type,
+      name,
+      initNode,
+      entries,
+      value,
+      metadata.docComment,
+      metadata.tags
+    );
+  }
+  collectDocMetadata(entries) {
+    const visitedNodes = /* @__PURE__ */ new Set();
+    const comments = [];
+    const tags = [];
+    const addNode = (node) => {
+      const sourceNode = node.original ?? node;
+      if (visitedNodes.has(sourceNode)) return;
+      visitedNodes.add(sourceNode);
+      const metadata = extractJSDocMetadataFromNode(this.ts, node);
+      if (metadata.docComment.length > 0) comments.push(metadata.docComment);
+      if (metadata.tags.length > 0) tags.push(metadata.tags);
+    };
+    for (const entryNode of [...entries].reverse()) {
+      addNode(entryNode);
+      let parent = entryNode.callParent;
+      while (parent != null) {
+        addNode(parent);
+        parent = parent.callParent;
+      }
+    }
+    const docComment = comments.reverse().flat();
+    const uniqueTags = dedupeTags(tags.reverse().flat());
+    return {
+      docComment: docComment.length > 0 ? docComment : void 0,
+      tags: uniqueTags.length > 0 ? uniqueTags : void 0
+    };
+  }
   getInitNode(fileName, position) {
-    const program = this.ls.getProgram();
-    if (!program) return null;
-    this.checker = program.getTypeChecker();
-    if (!this.checker) return null;
-    const source = program.getSourceFile(fileName);
+    const source = this.getSourceFile(fileName);
     if (!source) return null;
     const node = this.findNodeAtPos(source, position);
-    if (!node) return null;
-    return node;
+    return node ?? null;
+  }
+  getSourceFile(fileName) {
+    const program = this.getProgram();
+    if (!program) return null;
+    if (!this.sourceFileCache.has(fileName)) {
+      this.sourceFileCache.set(fileName, program.getSourceFile(fileName) ?? null);
+    }
+    return this.sourceFileCache.get(fileName) ?? null;
+  }
+  getProgram() {
+    const program = this.ls.getProgram() ?? null;
+    if (!program) {
+      this.currentProgram = null;
+      this.clearCaches();
+      return null;
+    }
+    if (program !== this.currentProgram) {
+      this.currentProgram = program;
+      this.checker = program.getTypeChecker();
+      this.clearCaches();
+    }
+    return program;
+  }
+  clearCaches() {
+    this.sourceFileCache.clear();
+    this.typeInfoCache.clear();
+    this.completionInfoCache.clear();
+    this.deprecatedUsageCache.clear();
   }
   findNodeAtPos(srcFile, pos) {
     const find = (node) => pos >= node.getStart() && pos < node.getEnd() ? this.ts.forEachChild(node, find) || node : null;
@@ -156,7 +338,7 @@ class TypeInfoFactory {
       node = node.parent;
     return node;
   }
-  getUnionParamtersInfo(callExpr) {
+  getUnionParametersInfo(callExpr) {
     const paramTypes = [];
     const signature = this.checker.getResolvedSignature(callExpr);
     if (!signature) return paramTypes;
@@ -176,9 +358,7 @@ class TypeInfoFactory {
   collectUnionMemberNodes(node, callParent, typeArgMap) {
     const ts = this.ts;
     node.codeText = getNodeText(node);
-    if (ts.isUnionTypeNode(node) || // e.g. string | number
-    ts.isIntersectionTypeNode(node) || // e.g. Class1 & Class2
-    ts.isHeritageClause(node)) {
+    if (ts.isUnionTypeNode(node) || ts.isIntersectionTypeNode(node) || ts.isHeritageClause(node)) {
       return node.types.flatMap(
         (tn) => this.collectUnionMemberNodes(tn, callParent, typeArgMap)
       );
@@ -206,9 +386,8 @@ class TypeInfoFactory {
     if (ts.isTemplateLiteralTypeNode(node))
       return this.buildTemplateLiteralNode(node, typeArgMap);
     if (ts.isLiteralTypeNode(node) || // e.g. "text", 42, true
-    ts.isTypeNode(node)) {
+    ts.isTypeNode(node))
       return [calledNode(node, callParent)];
-    }
     console.warn("Unknown node type: ", node);
     return [];
   }
@@ -228,7 +407,7 @@ class TypeInfoFactory {
   }
   collectTypeLiteralNode(node, typeArgMap) {
     return node.members.flatMap(
-      (m) => m.type ? this.collectUnionMemberNodes(m.type, node, typeArgMap) : []
+      (member) => member.type ? this.collectUnionMemberNodes(member.type, node, typeArgMap) : []
     );
   }
   collectMappedTypeNode(node, typeArgMap) {
@@ -268,40 +447,39 @@ class TypeInfoFactory {
   }
   collectKeyOfKeywordTypeOperatorNode(node, callParent) {
     const ts = this.ts, checker = this.checker, type = checker.getTypeAtLocation(node.type);
-    return type.getProperties().map((p) => {
-      const decl = p.getDeclarations()?.[0];
+    return type.getProperties().map((prop) => {
+      const decl = prop.getDeclarations()?.[0];
       const litNode = ts.factory.createLiteralTypeNode(
-        ts.factory.createStringLiteral(p.getName())
+        ts.factory.createStringLiteral(prop.getName())
       );
       return calledNode(litNode, callParent, decl);
     });
   }
   collectTupleTypeNode(node, typeArgMap) {
     return node.elements.flatMap(
-      (el) => this.collectUnionMemberNodes(el, node, typeArgMap)
+      (element) => this.collectUnionMemberNodes(element, node, typeArgMap)
     );
   }
   collectTypeQueryNode(node, typeArgMap) {
     const symbol = this.checker.getSymbolAtLocation(node.exprName);
-    if (symbol) {
-      const decls = symbol.getDeclarations() ?? [];
-      return decls.flatMap(
-        (d) => this.collectUnionMemberNodes(d, node, typeArgMap)
-      );
-    }
-    return [];
+    if (!symbol) return [];
+    const decls = symbol.getDeclarations() ?? [];
+    return decls.flatMap(
+      (decl) => this.collectUnionMemberNodes(decl, node, typeArgMap)
+    );
   }
   createLiteralNode(node, text, callParent, isRegexPattern) {
     const litNode = this.ts.factory.createStringLiteral(text);
-    const cn = node;
-    const originalOverride = cn.isRegexPattern === true && cn.callParent != null && cn.callParent !== node && this.ts.isTemplateLiteralTypeNode(cn.callParent) ? cn.callParent : void 0;
-    const original = originalOverride ?? cn.original ?? node;
-    litNode.id = original.id ?? cn.id;
+    const called = node;
+    const originalOverride = called.isRegexPattern === true && called.callParent != null && called.callParent !== node && this.ts.isTemplateLiteralTypeNode(called.callParent) ? called.callParent : void 0;
+    const original = originalOverride ?? called.original ?? node;
+    litNode.id = original.id ?? called.id;
     return calledNode(litNode, callParent, original, isRegexPattern);
   }
   // Creates new literal nodes with every possible content
   buildTemplateLiteralNode(node, typeArgMap) {
-    const headText = node.head.text, ts = this.ts;
+    const headText = node.head.text;
+    const ts = this.ts;
     const nodes = [];
     for (const span of node.templateSpans) {
       const spanNodes = [];
@@ -310,56 +488,65 @@ class TypeInfoFactory {
         node,
         typeArgMap
       );
-      for (const tn of innerTypeNodes) {
-        if (tn.isRegexPattern != null) {
-          const rn = tn;
-          rn.text += escapeRegExp(span.literal.text);
-          spanNodes.push(rn);
-        } else if (ts.isLiteralTypeNode(tn) && (this.ts.isStringLiteral(tn.literal) || this.ts.isNumericLiteral(tn.literal)))
+      for (const typeNode of innerTypeNodes) {
+        if (typeNode.isRegexPattern != null) {
+          const regexNode = typeNode;
+          regexNode.text += escapeRegExp(span.literal.text);
+          spanNodes.push(regexNode);
+        } else if (ts.isLiteralTypeNode(typeNode) && (this.ts.isStringLiteral(typeNode.literal) || this.ts.isNumericLiteral(typeNode.literal))) {
           spanNodes.push(
             this.createLiteralNode(
-              tn,
-              tn.literal.text + span.literal.text,
+              typeNode,
+              typeNode.literal.text + span.literal.text,
               node,
               false
             )
           );
-        else if (tn.kind === ts.SyntaxKind.NumberKeyword)
+        } else if (typeNode.kind === ts.SyntaxKind.NumberKeyword) {
           spanNodes.push(
             this.createLiteralNode(
-              tn,
+              typeNode,
               "\\d+(\\.\\d+)?" + span.literal.text,
               node,
               true
             )
           );
-        else if (tn.kind === ts.SyntaxKind.BooleanKeyword)
+        } else if (typeNode.kind === ts.SyntaxKind.BooleanKeyword) {
           spanNodes.push(
             this.createLiteralNode(
-              tn,
+              typeNode,
               "(true|false)" + span.literal.text,
               node,
               true
             )
           );
-        else if (tn.kind === ts.SyntaxKind.StringKeyword)
+        } else if (typeNode.kind === ts.SyntaxKind.StringKeyword) {
           spanNodes.push(
-            this.createLiteralNode(tn, "\\.\\*" + span.literal.text, node, true)
+            this.createLiteralNode(
+              typeNode,
+              "\\.\\*" + span.literal.text,
+              node,
+              true
+            )
           );
-        else console.warn("Unknown type of template: ", tn);
+        } else {
+          console.warn("Unknown type of template: ", typeNode);
+        }
       }
       nodes.push(spanNodes);
     }
-    const catProd = cartesianProduct(nodes).flatMap((compNodes) => {
-      const isRegex = compNodes.some((n) => n.isRegexPattern === true);
-      const txt = (n) => isRegex && n.isRegexPattern === false ? escapeRegExp(n.text) : n.text;
+    const cartesianNodes = cartesianProduct(nodes).flatMap((componentNodes) => {
+      const isRegex = componentNodes.some(
+        (entry) => entry.isRegexPattern === true
+      );
+      const getText = (entry) => isRegex && entry.isRegexPattern === false ? escapeRegExp(entry.text) : entry.text;
       const head = isRegex ? escapeRegExp(headText) : headText;
-      const fullText = head + compNodes.map(txt).join("");
-      return compNodes.map(
-        (cn) => this.createLiteralNode(cn, fullText, node, isRegex)
+      const fullText = head + componentNodes.map(getText).join("");
+      return componentNodes.map(
+        (entry) => this.createLiteralNode(entry, fullText, node, isRegex)
       );
     });
-    return catProd;
+    return cartesianNodes;
   }
   buildTypeArgumentMap(decl, node, typeArgMap) {
     const map = typeArgMap ? new Map(typeArgMap) : /* @__PURE__ */ new Map();
@@ -399,54 +586,262 @@ class TypeInfoFactory {
       return true;
     return false;
   }
+  getCompletionEntryName(node) {
+    if (!this.ts.isLiteralTypeNode(node)) return null;
+    const literal = node.literal;
+    if (this.ts.isStringLiteral(literal) || this.ts.isNumericLiteral(literal) || this.ts.isBigIntLiteral(literal))
+      return literal.text;
+    if (literal.kind === this.ts.SyntaxKind.TrueKeyword) return "true";
+    if (literal.kind === this.ts.SyntaxKind.FalseKeyword) return "false";
+    if (literal.kind === this.ts.SyntaxKind.NullKeyword) return "null";
+    return null;
+  }
+}
+function extractJSDocMetadataFromNode(ts, node) {
+  const sourceNode = node.original ?? node;
+  const sourceFile = sourceNode.getSourceFile();
+  if (!sourceFile) return { docComment: [], tags: [] };
+  const sourceText = sourceFile.getFullText();
+  const start = sourceNode.getStart();
+  const comment = getLeadingComment(ts, sourceText, start);
+  return comment ? prepareJSDocMetadata(sourceText.substring(comment.pos, comment.end)) : { docComment: [], tags: [] };
+}
+function getLeadingComment(ts, text, pos) {
+  const comments = ts.getLeadingCommentRanges(text, pos) ?? [];
+  if (comments.length > 0 && text[comments[0].pos + 2] === "*")
+    return comments[comments.length - 1];
+  text = text.substring(0, pos);
+  const commentStart = text.lastIndexOf("/**");
+  if (commentStart === -1) return;
+  const commentEnd = text.lastIndexOf("*/");
+  if (commentEnd === -1) return;
+  const textBetween = text.substring(commentEnd + 2, pos);
+  if (/[^ \t|\n]/.test(textBetween)) return;
+  return {
+    pos: commentStart + 3,
+    end: commentEnd,
+    kind: ts.SyntaxKind.MultiLineCommentTrivia
+  };
+}
+function prepareJSDocMetadata(rawComment) {
+  return {
+    docComment: prepareJSDocText(rawComment),
+    tags: extractDeprecatedTags(rawComment)
+  };
+}
+function prepareJSDocText(rawComment) {
+  return rawComment.replace("/**", "").replace("*/", "").split("\n").map((line) => line.trim().replace(/^\* ?/, "")).map((line) => line.replace(/@(\w+)/g, (_, tag) => `
+> _@${tag}_`));
+}
+function extractDeprecatedTags(rawComment) {
+  const normalizedLines = rawComment.replace("/**", "").replace("*/", "").split("\n").map((line) => line.trim().replace(/^\* ?/, ""));
+  const tags = [];
+  for (let i = 0; i < normalizedLines.length; i++) {
+    const line = normalizedLines[i];
+    const match = line.match(/^@deprecated\b(?:\s+(.*))?$/);
+    if (!match) continue;
+    const tagLines = [match[1]?.trim() ?? ""];
+    for (let j = i + 1; j < normalizedLines.length; j++) {
+      const continuationLine = normalizedLines[j].trim();
+      if (continuationLine.startsWith("@")) break;
+      if (continuationLine === "") continue;
+      tagLines.push(continuationLine);
+      i = j;
+    }
+    const text = tagLines.join(" ").trim();
+    tags.push({
+      name: "deprecated",
+      text: text ? [{ kind: "text", text }] : []
+    });
+  }
+  return tags;
+}
+function dedupeTags(tags) {
+  const seen = /* @__PURE__ */ new Set();
+  const unique = [];
+  for (const tag of tags) {
+    const key = `${tag.name}:${getTagText(tag)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(tag);
+  }
+  return unique;
+}
+function isDeprecatedUsageNode(ts, node) {
+  return ts.isStringLiteral(node) || ts.isNumericLiteral(node) || ts.isBigIntLiteral(node) || node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword || node.kind === ts.SyntaxKind.NullKeyword;
 }
 function calledNode(node, callParent, original, isRegex) {
-  const cNode = node;
-  cNode.callParent = callParent;
-  cNode.original = original;
-  cNode.isRegexPattern = isRegex;
-  return cNode;
+  const called = node;
+  called.callParent = callParent;
+  called.original = original;
+  called.isRegexPattern = isRegex;
+  return called;
 }
 function getNodeText(node) {
   const text = node.getSourceFile()?.text;
   if (!text) return "<No Source>";
   return text.substring(node.getStart(), node.getEnd());
 }
+function getDeprecatedTag(tags) {
+  return tags?.find((tag) => tag.name === "deprecated");
+}
+function getTagText(tag) {
+  return tag?.text?.map((part) => part.text).join("") ?? "";
+}
 function isRegexNode(node) {
   return node.isRegexPattern === true;
 }
-function escapeRegExp(string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function cartesianProduct(arrays) {
   return arrays.reduce(
-    (acc, curr) => acc.flatMap((d) => curr.map((e) => [...d, e])),
+    (acc, curr) => acc.flatMap((items) => curr.map((item) => [...items, item])),
     [[]]
   );
 }
-function addExtraQuickInfo(ts, quickInfo, typesInfo) {
+function applyCompletionInfo(ts, completion, info) {
+  addTemplateCompletions(ts, completion, info.templateInfo);
+  markDeprecatedEntries(completion, info.entryInfos);
+}
+function addDeprecatedCompletionEntryDetails(details, unionInfo) {
+  const deprecatedTag = getDeprecatedTag(unionInfo.tags);
+  if (!deprecatedTag) return;
+  details.tags = details.tags ? [...details.tags] : [];
+  if (details.tags.some(
+    (tag) => tag.name === deprecatedTag.name && getTagText(tag) === getTagText(deprecatedTag)
+  ))
+    return;
+  details.tags.push(deprecatedTag);
+}
+function defaultComplInfo() {
+  return {
+    isGlobalCompletion: false,
+    isMemberCompletion: false,
+    isNewIdentifierLocation: false,
+    entries: []
+  };
+}
+function addTemplateCompletions(ts, completion, unionInfo) {
+  if (!unionInfo) return;
+  const entries = createTemplateCompletions(ts, unionInfo);
+  if (entries.length === 0) return;
+  completion.entries.push(...entries);
+}
+function markDeprecatedEntries(completion, entryInfos) {
+  const deprecatedNames = new Set(
+    entryInfos.filter((entryInfo) => getDeprecatedTag(entryInfo.tags)).map((entryInfo) => entryInfo.name)
+  );
+  if (deprecatedNames.size === 0) return;
+  for (const entry of completion.entries) {
+    if (!deprecatedNames.has(entry.name)) continue;
+    entry.kindModifiers = appendKindModifier(entry.kindModifiers, "deprecated");
+  }
+}
+function createTemplateCompletions(ts, unionInfo) {
+  const visitedSnippets = /* @__PURE__ */ new Set();
+  const templateNodes = unionInfo.entries.filter((node) => isRegexNode(node));
+  if (templateNodes.length === 0) return [];
+  const replacementSpan = getNodeTextSpan(unionInfo.initNode);
+  const entries = [];
+  for (const templateNode of templateNodes) {
+    const snippet = regexToSnippet(templateNode.text);
+    if (visitedSnippets.has(snippet)) continue;
+    visitedSnippets.add(snippet);
+    const name = replaceSnippetDefaults(snippet);
+    entries.push({
+      name,
+      kind: ts.ScriptElementKind.string,
+      sortText: name,
+      insertText: snippet,
+      isSnippet: true,
+      replacementSpan
+    });
+  }
+  return entries;
+}
+function regexToSnippet(snippet) {
+  let i = 1;
+  return snippet.replace(/\\d\+\(\\\.\\d\+\)\?/g, () => `\${${i++}:0}`).replace(/\(true\|false\)/g, () => `\${${i++}:false}`).replace(/\.\*/g, () => `\${${i++}:TEXT}`).replace(/\\/g, "");
+}
+function replaceSnippetDefaults(text) {
+  return text.replace(/\$\{\d+:([^}]+)\}/g, "$1");
+}
+function getNodeTextSpan(node) {
+  const start = node.getStart() + 1;
+  return {
+    start,
+    length: node.getWidth() - 2
+  };
+}
+function appendKindModifier(kindModifiers, modifier) {
+  const modifiers = new Set(
+    (kindModifiers ?? "").split(",").map((part) => part.trim()).filter(Boolean)
+  );
+  modifiers.add(modifier);
+  return [...modifiers].join(",");
+}
+function createDeprecatedSemanticDiagnostics(ts, usages) {
+  return createDeprecatedDiagnostics(ts, usages);
+}
+function createDeprecatedDiagnostics(ts, usages) {
+  const diagnostics = [];
+  for (const { node, info } of usages) {
+    const deprecatedTag = getDeprecatedTag(info.tags);
+    if (!deprecatedTag) continue;
+    diagnostics.push({
+      file: node.getSourceFile(),
+      start: node.getStart(),
+      length: node.getWidth(),
+      category: ts.DiagnosticCategory.Suggestion,
+      code: 6385,
+      messageText: formatDeprecatedMessage(node.getText(), deprecatedTag),
+      source: "ts-union-docs-plugin",
+      reportsDeprecated: {}
+    });
+  }
+  return diagnostics;
+}
+function formatDeprecatedMessage(nodeText, deprecatedTag) {
+  const tagText = getTagText(deprecatedTag);
+  return tagText ? `${nodeText} is deprecated. ${tagText}` : `${nodeText} is deprecated.`;
+}
+function addExtraQuickInfo(_ts, quickInfo, typesInfo) {
   if (typesInfo.length === 0) return;
-  typesInfo.forEach((p) => addDocComment(ts, p));
   switch (typesInfo[0].type) {
-    case SupportedType.Paramter:
+    case SupportedType.Parameter:
       return addExtraJDocTagInfo(quickInfo, typesInfo);
     case SupportedType.Variable:
       return addExtraDocumentation(quickInfo, typesInfo);
   }
 }
+function createFallbackQuickInfo(ts, pos, typeInfo) {
+  return {
+    kind: ts.ScriptElementKind.string,
+    kindModifiers: "",
+    textSpan: {
+      start: pos,
+      length: typeInfo[0]?.value?.length ?? 1
+    },
+    displayParts: typeInfo[0]?.value ? [
+      {
+        kind: "stringLiteral",
+        text: JSON.stringify(typeInfo[0].value)
+      }
+    ] : void 0
+  };
+}
 function addExtraJDocTagInfo(quickInfo, typesInfo) {
   if (!quickInfo.tags) quickInfo.tags = [];
-  const tagIdxs = quickInfo.tags?.map((tag, idx) => ({ tag, idx })).filter((ti) => ti.tag.name === "param") ?? [];
+  const tagIdxs = quickInfo.tags.map((tag, idx) => ({ tag, idx })).filter((entry) => entry.tag.name === "param");
   const newTags = [
     ...tagIdxs.length > 0 ? quickInfo.tags.filter((_, i) => i < tagIdxs[0].idx) : quickInfo.tags
   ];
   for (const typeInfo of typesInfo) {
     const jsDocTag = findJsDocParamTagByName(tagIdxs, typeInfo.name);
-    if ((typeInfo.docComment?.length ?? 0) > 0) {
-      const tag = jsDocTag?.tag ?? defaultParamJSDocTag(typeInfo.name);
-      const newTag = addTagInfo(tag, typeInfo);
-      newTags.push(newTag);
-    }
+    if ((typeInfo.docComment?.length ?? 0) === 0) continue;
+    const tag = jsDocTag?.tag ?? defaultParamJSDocTag(typeInfo.name);
+    newTags.push(addTagInfo(tag, typeInfo));
   }
   const lastParamTagIdx = tagIdxs.length === 0 ? 0 : tagIdxs[tagIdxs.length - 1]?.idx ?? 0;
   if (quickInfo.tags.length - 1 > lastParamTagIdx)
@@ -456,21 +851,19 @@ function addExtraJDocTagInfo(quickInfo, typesInfo) {
 function addExtraDocumentation(quickInfo, typesInfo) {
   const newDocs = quickInfo.documentation ? [...quickInfo.documentation] : [];
   for (const typeInfo of typesInfo) {
+    if ((typeInfo.docComment?.length ?? 0) === 0) continue;
     newDocs.push(
-      createMarkdownDisplayPart(
-        typeInfo.docComment?.map((line, i) => i > 0 ? line = "> " + line : line).join("\n") ?? ""
-      )
+      createMarkdownDisplayPart(formatDocComment(typeInfo.docComment ?? []))
     );
   }
   quickInfo.documentation = newDocs;
 }
 function findJsDocParamTagByName(tags, name) {
-  const foundTag = tags.find(
+  return tags.find(
     ({ tag }) => tag.text?.some(
       (textPart) => textPart.kind === "parameterName" && textPart.text.toLowerCase() === name.toLowerCase()
     )
-  );
-  return foundTag ?? null;
+  ) ?? null;
 }
 function defaultParamJSDocTag(name) {
   return {
@@ -493,173 +886,103 @@ function addTagInfo(oldTag, typeInfo) {
   if (!typeInfo?.docComment) return oldTag;
   const newTag = JSON.parse(JSON.stringify(oldTag));
   if (!newTag.text) newTag.text = [];
-  newTag.text.push(
-    createMarkdownDisplayPart(
-      typeInfo.docComment?.map((line, i) => i > 0 ? line = "> " + line : line).join("\n")
-    )
-  );
+  newTag.text.push(createMarkdownDisplayPart(formatDocComment(typeInfo.docComment)));
   return newTag;
 }
-function addDocComment(ts, param) {
-  const visitedNodes = /* @__PURE__ */ new Set();
-  const comments = [];
-  function add(node) {
-    const id = node.id;
-    if (visitedNodes.has(id)) return false;
-    visitedNodes.add(id);
-    comments.push(extractJSDocsFromNode(ts, node));
-    return true;
-  }
-  for (const entryNode of param.entries.reverse()) {
-    add(entryNode);
-    let parent = entryNode.callParent;
-    while (parent != null) {
-      add(parent);
-      parent = parent.callParent;
-    }
-  }
-  const lines = comments.reverse().flat();
-  if (!param.docComment) param.docComment = lines;
-  else param.docComment.push(...lines);
-}
-function extractJSDocsFromNode(ts, node) {
-  node = node.original ?? node;
-  const sourceFile = node.getSourceFile();
-  if (!sourceFile) return [];
-  const sourceText = sourceFile.getFullText();
-  const start = node.getStart();
-  const comment = getLeadingComment(ts, sourceText, start);
-  return comment ? prepareJSDocText(sourceText.substring(comment.pos, comment.end)) : [];
-}
-function getLeadingComment(ts, text, pos) {
-  const comments = ts.getLeadingCommentRanges(text, pos) ?? [];
-  if (comments.length > 0 && text[comments[0].pos + 2] === "*")
-    return comments[comments.length - 1];
-  text = text.substring(0, pos);
-  const commentStart = text.lastIndexOf("/**");
-  if (commentStart === -1) return;
-  const commentEnd = text.lastIndexOf("*/");
-  if (commentEnd === -1) return;
-  const textBetween = text.substring(commentEnd + 2, pos);
-  if (/[^ \t|\n]/.test(textBetween)) return;
-  return {
-    pos: commentStart + 3,
-    end: commentEnd,
-    kind: ts.SyntaxKind.MultiLineCommentTrivia
-  };
-}
-function prepareJSDocText(rawComment) {
-  return rawComment.replace("/**", "").replace("*/", "").split("\n").map((line) => line.trim().replace(/^\* ?/, "")).map((line) => line.replace(/@(\w+)/g, (_, tag) => `
-> _@${tag}_`));
-}
-function addTemplateCompletions(ts, completion, unionInfo) {
-  const entries = createTemplateCompletions(ts, unionInfo);
-  if (entries.length === 0) return;
-  completion.entries.push(...entries);
-}
-function createTemplateCompletions(ts, unionInfo) {
-  const visitedNodes = /* @__PURE__ */ new Set();
-  const entries = [];
-  const templateNodes = unionInfo.entries.filter((n) => isRegexNode(n));
-  if (templateNodes.length === 0) return entries;
-  const replacementSpan = getNodeTextSpan(unionInfo.initNode);
-  for (const tn of templateNodes) {
-    const snippet = regexToSnippet(tn.text);
-    if (visitedNodes.has(snippet)) continue;
-    visitedNodes.add(snippet);
-    const name = replaceSnippetDefaults(snippet);
-    entries.push({
-      name,
-      kind: ts.ScriptElementKind.string,
-      sortText: name,
-      insertText: snippet,
-      isSnippet: true,
-      replacementSpan
-    });
-  }
-  return entries;
-}
-function regexToSnippet(snippet) {
-  let i = 1;
-  return snippet.replace(/\\d\+\(\\\.\\d\+\)\?/g, () => `\${${i++}:0}`).replace(/\(true\|false\)/g, () => `\${${i++}:false}`).replace(/\.\*/g, () => `\${${i++}:TEXT}`).replace(/\\/g, "");
-}
-function replaceSnippetDefaults(str) {
-  return str.replace(/\$\{\d+:([^}]+)\}/g, "$1");
-}
-function defaultComplInfo() {
-  return {
-    isGlobalCompletion: false,
-    isMemberCompletion: false,
-    isNewIdentifierLocation: false,
-    entries: []
-  };
-}
-function getNodeTextSpan(node) {
-  const start = node.getStart() + 1;
-  return {
-    start,
-    length: node.getWidth() - 2
-  };
+function formatDocComment(lines) {
+  return lines.map((line, index) => index > 0 ? `> ${line}` : line).join("\n");
 }
 class UnionTypeDocsPlugin {
   constructor(ts) {
     this.ts = ts;
   }
   create(info) {
-    this.logger = info.project.projectService.logger;
-    this.ls = info.languageService;
-    this.typeInfoFactory = new TypeInfoFactory(this.ts, this.ls);
-    this.proxy = createLsProxy(this.ls);
-    this.proxy.getQuickInfoAtPosition = this.getQuickInfoAtPosition.bind(this);
-    this.proxy.getCompletionsAtPosition = this.getCompletionsAtPosition.bind(this);
-    this.logger.info("[Union type docs plugin] Loaded");
-    return this.proxy;
-  }
-  getQuickInfoAtPosition(fileName, pos) {
-    const quickInfo = this.ls.getQuickInfoAtPosition(fileName, pos);
-    if (!quickInfo) return quickInfo;
-    try {
-      const typeInfo = this.typeInfoFactory.getTypeInfo(fileName, pos);
-      if (!typeInfo) return quickInfo;
-      addExtraQuickInfo(this.ts, quickInfo, typeInfo);
-    } catch (err) {
-      this.logErr("Quick Info", err);
-    }
-    return quickInfo;
-  }
-  getCompletionsAtPosition(fileName, pos, opts, fmt) {
-    const cmpl = this.ls.getCompletionsAtPosition(fileName, pos, opts, fmt) ?? defaultComplInfo();
-    try {
-      const typeInfo = this.typeInfoFactory.getContextualTypeInfo(
+    const logger = info.project.projectService.logger, languageService = info.languageService, ts = this.ts, typeInfoFactory = new TypeInfoFactory(this.ts, languageService), proxy = createLanguageServiceProxy(languageService);
+    proxy.getQuickInfoAtPosition = (fileName, pos) => {
+      try {
+        const typeInfo = typeInfoFactory.getTypeInfo(fileName, pos);
+        const quickInfo = languageService.getQuickInfoAtPosition(fileName, pos) ?? (typeInfo ? createFallbackQuickInfo(ts, pos, typeInfo) : void 0);
+        if (!quickInfo || !typeInfo) return quickInfo;
+        addExtraQuickInfo(ts, quickInfo, typeInfo);
+        return quickInfo;
+      } catch (err) {
+        logPluginError(ts, logger, "Quick Info", err);
+        return languageService.getQuickInfoAtPosition(fileName, pos);
+      }
+    };
+    proxy.getCompletionsAtPosition = (fileName, pos, opts, fmt) => {
+      const completions = languageService.getCompletionsAtPosition(fileName, pos, opts, fmt) ?? defaultComplInfo();
+      try {
+        const completionInfo = typeInfoFactory.getCompletionInfo(fileName, pos);
+        if (completionInfo)
+          applyCompletionInfo(ts, completions, completionInfo);
+      } catch (err) {
+        logPluginError(ts, logger, "Completion", err);
+      }
+      return completions;
+    };
+    proxy.getCompletionEntryDetails = (fileName, position, name, formatOptions, source, preferences, data) => {
+      const details = languageService.getCompletionEntryDetails(
         fileName,
-        pos
+        position,
+        name,
+        formatOptions,
+        source,
+        preferences,
+        data
       );
-      if (!typeInfo) return cmpl;
-      addTemplateCompletions(this.ts, cmpl, typeInfo);
-    } catch (err) {
-      this.logErr("Completion", err);
-    }
-    return cmpl;
-  }
-  logErr(at, err) {
-    this.logger.msg(
-      `[TS Union Docs ${at} Error]: ${errToString(err)}`,
-      this.ts.server.Msg.Err
+      if (!details) return details;
+      try {
+        const entryInfo = typeInfoFactory.getCompletionEntryInfo(
+          fileName,
+          position,
+          name
+        );
+        if (entryInfo) addDeprecatedCompletionEntryDetails(details, entryInfo);
+      } catch (err) {
+        logPluginError(this.ts, logger, "Completion Details", err);
+      }
+      return details;
+    };
+    proxy.getSemanticDiagnostics = (fileName) => appendDeprecatedDiagnostics(
+      languageService.getSemanticDiagnostics(fileName),
+      () => createDeprecatedSemanticDiagnostics(
+        this.ts,
+        typeInfoFactory.getDeprecatedUsageInfos(fileName)
+      ),
+      (err) => logPluginError(this.ts, logger, "Semantic Diagnostics", err)
     );
+    logger.info("[Union type docs plugin] Loaded");
+    return proxy;
   }
 }
-function createLsProxy(oldLs) {
+function createLanguageServiceProxy(languageService) {
   const proxy = /* @__PURE__ */ Object.create(null);
-  for (const k of Object.keys(oldLs)) {
-    const x = oldLs[k];
-    proxy[k] = typeof x === "function" ? x.bind(oldLs) : x;
+  for (const key of Object.keys(languageService)) {
+    const value = languageService[key];
+    proxy[key] = typeof value === "function" ? value.bind(languageService) : value;
   }
   return proxy;
 }
+function appendDeprecatedDiagnostics(diagnostics, createDiagnostics, onError) {
+  const nextDiagnostics = [...diagnostics];
+  try {
+    nextDiagnostics.push(...createDiagnostics());
+  } catch (err) {
+    onError(err);
+  }
+  return nextDiagnostics;
+}
+function logPluginError(ts, logger, at, err) {
+  logger.msg(
+    `[TS Union Docs ${at} Error]: ${errToString(err)}`,
+    ts.server.Msg.Err
+  );
+}
 function errToString(err) {
   if (err instanceof Error) return `${err.message} | ${err.stack}`;
-  else if (typeof err === "string") return err;
-  else return String(err);
+  if (typeof err === "string") return err;
+  return String(err);
 }
 module.exports = (mod) => new UnionTypeDocsPlugin(mod.typescript);
 //# sourceMappingURL=index.js.map

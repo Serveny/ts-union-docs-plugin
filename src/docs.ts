@@ -1,5 +1,5 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
-import { CalledNode, SupportedType, UnionInfo } from './info';
+import { SupportedType, UnionInfo } from './info';
 
 type TagIdx = {
 	tag: TS.JSDocTagInfo;
@@ -7,20 +7,41 @@ type TagIdx = {
 };
 
 export function addExtraQuickInfo(
-	ts: typeof TS,
+	_ts: typeof TS,
 	quickInfo: TS.QuickInfo,
 	typesInfo: UnionInfo[]
 ) {
 	if (typesInfo.length === 0) return;
-	typesInfo.forEach((p) => addDocComment(ts, p));
 
-	// if the first type is a param, the others must also be parameters
 	switch (typesInfo[0].type) {
-		case SupportedType.Paramter:
+		case SupportedType.Parameter:
 			return addExtraJDocTagInfo(quickInfo, typesInfo);
 		case SupportedType.Variable:
 			return addExtraDocumentation(quickInfo, typesInfo);
 	}
+}
+
+export function createFallbackQuickInfo(
+	ts: typeof TS,
+	pos: number,
+	typeInfo: UnionInfo[]
+): TS.QuickInfo {
+	return {
+		kind: ts.ScriptElementKind.string,
+		kindModifiers: '',
+		textSpan: {
+			start: pos,
+			length: typeInfo[0]?.value?.length ?? 1,
+		},
+		displayParts: typeInfo[0]?.value
+			? [
+					{
+						kind: 'stringLiteral',
+						text: JSON.stringify(typeInfo[0].value),
+					},
+				]
+			: undefined,
+	};
 }
 
 function addExtraJDocTagInfo(quickInfo: TS.QuickInfo, typesInfo: UnionInfo[]) {
@@ -28,10 +49,9 @@ function addExtraJDocTagInfo(quickInfo: TS.QuickInfo, typesInfo: UnionInfo[]) {
 
 	const tagIdxs: TagIdx[] =
 		quickInfo.tags
-			?.map((tag, idx) => ({ tag, idx }))
-			.filter((ti) => ti.tag.name === 'param') ?? [];
+			.map((tag, idx) => ({ tag, idx }))
+			.filter((entry) => entry.tag.name === 'param');
 
-	// Create new tag list to prevent tags stacking up over time in quick info
 	const newTags = [
 		...(tagIdxs.length > 0
 			? quickInfo.tags.filter((_, i) => i < tagIdxs[0].idx)
@@ -40,19 +60,14 @@ function addExtraJDocTagInfo(quickInfo: TS.QuickInfo, typesInfo: UnionInfo[]) {
 
 	for (const typeInfo of typesInfo) {
 		const jsDocTag = findJsDocParamTagByName(tagIdxs, typeInfo.name);
+		if ((typeInfo.docComment?.length ?? 0) === 0) continue;
 
-		// If type info found, create new quick info tag
-		if ((typeInfo.docComment?.length ?? 0) > 0) {
-			// If no js doc comment for param found, fill with default
-			const tag = jsDocTag?.tag ?? defaultParamJSDocTag(typeInfo.name);
-			const newTag = addTagInfo(tag, typeInfo);
-			newTags.push(newTag);
-		}
+		const tag = jsDocTag?.tag ?? defaultParamJSDocTag(typeInfo.name);
+		newTags.push(addTagInfo(tag, typeInfo));
 	}
 
-	// If tags after last param tag left, add them to new tag list
 	const lastParamTagIdx =
-		tagIdxs.length === 0 ? 0 : tagIdxs[tagIdxs.length - 1]?.idx ?? 0;
+		tagIdxs.length === 0 ? 0 : (tagIdxs[tagIdxs.length - 1]?.idx ?? 0);
 	if (quickInfo.tags.length - 1 > lastParamTagIdx)
 		newTags.push(...quickInfo.tags.filter((_, i) => i > lastParamTagIdx));
 
@@ -66,26 +81,24 @@ function addExtraDocumentation(
 	const newDocs = quickInfo.documentation ? [...quickInfo.documentation] : [];
 
 	for (const typeInfo of typesInfo) {
+		if ((typeInfo.docComment?.length ?? 0) === 0) continue;
 		newDocs.push(
-			createMarkdownDisplayPart(
-				typeInfo.docComment
-					?.map((line, i) => (i > 0 ? (line = '> ' + line) : line))
-					.join('\n') ?? ''
-			)
+			createMarkdownDisplayPart(formatDocComment(typeInfo.docComment ?? []))
 		);
 	}
 	quickInfo.documentation = newDocs;
 }
 
 function findJsDocParamTagByName(tags: TagIdx[], name: string): TagIdx | null {
-	const foundTag = tags.find(({ tag }) =>
-		tag.text?.some(
-			(textPart) =>
-				textPart.kind === 'parameterName' &&
-				textPart.text.toLowerCase() === name.toLowerCase()
-		)
+	return (
+		tags.find(({ tag }) =>
+			tag.text?.some(
+				(textPart) =>
+					textPart.kind === 'parameterName' &&
+					textPart.text.toLowerCase() === name.toLowerCase()
+			)
+		) ?? null
 	);
-	return foundTag ?? null;
 }
 
 function defaultParamJSDocTag(name: string): TS.JSDocTagInfo {
@@ -112,99 +125,13 @@ function addTagInfo(
 	typeInfo: UnionInfo | undefined
 ): TS.JSDocTagInfo {
 	if (!typeInfo?.docComment) return oldTag;
+
 	const newTag: TS.JSDocTagInfo = JSON.parse(JSON.stringify(oldTag));
 	if (!newTag.text) newTag.text = [];
-	newTag.text.push(
-		createMarkdownDisplayPart(
-			typeInfo.docComment
-				?.map((line, i) => (i > 0 ? (line = '> ' + line) : line))
-				.join('\n')
-		)
-	);
+	newTag.text.push(createMarkdownDisplayPart(formatDocComment(typeInfo.docComment)));
 	return newTag;
 }
 
-function addDocComment(ts: typeof TS, param: UnionInfo) {
-	const visitedNodes = new Set();
-	const comments: string[][] = [];
-
-	function add(node: CalledNode): boolean {
-		const id = node.id;
-		if (visitedNodes.has(id)) return false;
-		visitedNodes.add(id);
-		comments.push(extractJSDocsFromNode(ts, node));
-		return true;
-	}
-
-	// Read out all comments
-	for (const entryNode of param.entries.reverse()) {
-		add(entryNode);
-
-		let parent = entryNode.callParent;
-		while (parent != null) {
-			add(parent);
-			parent = parent.callParent;
-		}
-	}
-
-	// Add the comments in order parent -> ... -> child
-	const lines = comments.reverse().flat();
-	if (!param.docComment) param.docComment = lines;
-	else param.docComment.push(...lines);
-}
-
-function extractJSDocsFromNode(ts: typeof TS, node: CalledNode): string[] {
-	// If the node was resolved, get the original node
-	node = node.original ?? node;
-	const sourceFile = node.getSourceFile();
-	if (!sourceFile) return [];
-	const sourceText = sourceFile.getFullText();
-	const start = node.getStart();
-	const comment = getLeadingComment(ts, sourceText, start);
-
-	return comment
-		? prepareJSDocText(sourceText.substring(comment.pos, comment.end))
-		: [];
-}
-
-function getLeadingComment(
-	ts: typeof TS,
-	text: string,
-	pos: number
-): TS.CommentRange | undefined {
-	const comments = ts.getLeadingCommentRanges(text, pos) ?? [];
-
-	// jsdoc comment (has to start with /**)
-	if (comments.length > 0 && text[comments[0].pos + 2] === '*')
-		return comments[comments.length - 1];
-
-	text = text.substring(0, pos);
-	const commentStart = text.lastIndexOf('/**');
-	if (commentStart === -1) return;
-
-	const commentEnd = text.lastIndexOf('*/');
-	if (commentEnd === -1) return;
-
-	// only spaces, tabs or linebreaks allowed between comment and node
-	const textBetween = text.substring(commentEnd + 2, pos);
-	if (/[^ \t|\n]/.test(textBetween)) return;
-
-	return {
-		pos: commentStart + 3,
-		end: commentEnd,
-		kind: ts.SyntaxKind.MultiLineCommentTrivia,
-	};
-}
-
-function prepareJSDocText(rawComment: string): string[] {
-	return (
-		rawComment
-			.replace('/**', '')
-			.replace('*/', '')
-			.split('\n')
-			// remove whitespace and the leading * in every line
-			.map((line) => line.trim().replace(/^\* ?/, ''))
-			// make @tags cursive again
-			.map((line) => line.replace(/@(\w+)/g, (_, tag) => `\n> _@${tag}_`))
-	);
+function formatDocComment(lines: string[]): string {
+	return lines.map((line, index) => (index > 0 ? `> ${line}` : line)).join('\n');
 }

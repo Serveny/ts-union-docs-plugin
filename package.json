@@ -14,7 +14,7 @@
         "url": "https://github.com/Serveny/ts-union-docs-plugin"
     },
     "devDependencies": {
-        "@types/node": "25.0.10",
+        "@types/node": "25.4.0",
         "@vitest/ui": "^4.0.18",
         "rollup-plugin-node-externals": "8.1.2",
         "typescript": "5.9.3",

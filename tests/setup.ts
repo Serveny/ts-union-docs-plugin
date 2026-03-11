@@ -63,6 +63,16 @@ export function tagsToText(quickInfo?: ts.QuickInfo): string | undefined {
 		.join('');
 }
 
+export function tagText(
+	tags: readonly ts.JSDocTagInfo[] | undefined,
+	name: string
+): string | undefined {
+	return tags
+		?.filter((tag) => tag.name === name)
+		.map((tag) => tag.text?.map((part) => part.text).join('') ?? '')
+		.join('\n');
+}
+
 export function documentationToText(quickInfo?: ts.QuickInfo) {
 	return quickInfo?.documentation?.map((tag) => tag.text).join('');
 }
@@ -73,4 +83,17 @@ export function completionSnippetNames(
 	return completionInfo.entries
 		.filter((entry) => entry.isSnippet === true)
 		.map((entry) => entry.name);
+}
+
+export function findCompletionEntry(
+	completionInfo: ts.CompletionInfo,
+	name: string
+) {
+	return completionInfo.entries.find((entry) => entry.name === name);
+}
+
+export function diagnosticMessages(diags: readonly ts.Diagnostic[]): string[] {
+	return diags.map((diag) =>
+		ts.flattenDiagnosticMessageText(diag.messageText, '\n')
+	);
 }
