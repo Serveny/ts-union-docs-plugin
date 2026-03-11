@@ -526,7 +526,8 @@ export class TypeInfoFactory {
 	}
 
 	private getValue(expr: TS.Expression): string {
-		return this.ts.isLiteralExpression(expr) ? expr.text : expr.getText();
+		const resolvedExpr = this.resolveExpression(expr);
+		return getExpressionValueText(this.ts, resolvedExpr) ?? expr.getText();
 	}
 
 	private collectUnionMemberNodes(
@@ -867,15 +868,17 @@ export class TypeInfoFactory {
 	}
 
 	private cmp(expr: TS.Expression, node: CalledNode): boolean {
+		const resolvedExpr = this.resolveExpression(expr);
+
 		// check for generated regex pattern
-		if (isRegexNode(node) && this.ts.isStringLiteral(expr)) {
+		if (isRegexNode(node) && isStringLikeExpression(this.ts, resolvedExpr)) {
 			// Surround with ^...$, so the whole string must match
 			const pattern = new RegExp(`^${node.text}$`);
-			return pattern.test(expr.text);
+			return pattern.test(resolvedExpr.text);
 		}
-		if (node.isRegexPattern === false) return this.cmpLit(expr, node as any);
+		if (node.isRegexPattern === false) return this.cmpLit(resolvedExpr, node as any);
 		if (!this.ts.isLiteralTypeNode(node)) return false;
-		return this.cmpLit(expr, node.literal);
+		return this.cmpLit(resolvedExpr, node.literal);
 	}
 
 	private cmpLit(
@@ -888,7 +891,7 @@ export class TypeInfoFactory {
 	) {
 		const ts = this.ts;
 		// string literals (i.e. "hello" and type T = "hello")
-		if (ts.isStringLiteral(expr) && ts.isStringLiteral(typeLiteral))
+		if (isStringLikeExpression(ts, expr) && ts.isStringLiteral(typeLiteral))
 			return expr.text === typeLiteral.text;
 
 		// numeric literals (i.e. 42 and type T = 42)
@@ -925,6 +928,85 @@ export class TypeInfoFactory {
 			return true;
 
 		return false;
+	}
+
+	private resolveExpression(
+		expr: TS.Expression,
+		visited = new Set<TS.Node>()
+	): TS.Expression {
+		const unwrappedExpr = this.unwrapExpression(expr);
+		if (visited.has(unwrappedExpr)) return unwrappedExpr;
+		visited.add(unwrappedExpr);
+
+		const symbol = this.getReferencedSymbol(unwrappedExpr);
+		if (!symbol) return unwrappedExpr;
+
+		const initializer = this.getConstInitializer(symbol);
+		if (!initializer) return unwrappedExpr;
+
+		return this.resolveExpression(initializer, visited);
+	}
+
+	private unwrapExpression(expr: TS.Expression): TS.Expression {
+		let current = expr;
+
+		while (true) {
+			if (this.ts.isParenthesizedExpression(current)) {
+				current = current.expression;
+				continue;
+			}
+			if (this.ts.isAsExpression(current)) {
+				current = current.expression;
+				continue;
+			}
+			if (this.ts.isTypeAssertionExpression(current)) {
+				current = current.expression;
+				continue;
+			}
+			if (this.ts.isSatisfiesExpression?.(current)) {
+				current = current.expression;
+				continue;
+			}
+			if (this.ts.isNonNullExpression(current)) {
+				current = current.expression;
+				continue;
+			}
+
+			return current;
+		}
+	}
+
+	private getReferencedSymbol(expr: TS.Expression): TS.Symbol | null {
+		if (
+			!this.ts.isIdentifier(expr) &&
+			!this.ts.isPropertyAccessExpression(expr)
+		)
+			return null;
+
+		const location = this.ts.isIdentifier(expr) ? expr : expr.name;
+		const symbol = this.checker.getSymbolAtLocation(location);
+		if (!symbol) return null;
+
+		return symbol.flags & this.ts.SymbolFlags.Alias
+			? this.checker.getAliasedSymbol(symbol)
+			: symbol;
+	}
+
+	private getConstInitializer(symbol: TS.Symbol): TS.Expression | null {
+		for (const decl of symbol.getDeclarations() ?? []) {
+			if (this.ts.isVariableDeclaration(decl)) {
+				if (!isConstVariableDeclaration(this.ts, decl)) continue;
+				if (decl.initializer) return decl.initializer;
+			}
+
+			if (this.ts.isPropertyDeclaration(decl)) {
+				if (!hasModifier(this.ts, decl, this.ts.SyntaxKind.ReadonlyKeyword))
+					continue;
+				if (decl.initializer) return decl.initializer;
+			}
+		}
+
+		return null;
 	}
 
 	private getCompletionEntryName(node: CalledNode): string | null {
@@ -1117,6 +1199,44 @@ function getNodeText(node: TS.Node) {
 	const text = node.getSourceFile()?.text;
 	if (!text) return '<No Source>';
 	return text.substring(node.getStart(), node.getEnd());
+}
+
+function getExpressionValueText(
+	ts: typeof TS,
+	expr: TS.Expression
+): string | undefined {
+	if (isStringLikeExpression(ts, expr)) return expr.text;
+	if (ts.isNumericLiteral(expr) || ts.isBigIntLiteral(expr)) return expr.text;
+	if (expr.kind === ts.SyntaxKind.TrueKeyword) return 'true';
+	if (expr.kind === ts.SyntaxKind.FalseKeyword) return 'false';
+	if (expr.kind === ts.SyntaxKind.NullKeyword) return 'null';
+	if (expr.kind === ts.SyntaxKind.UndefinedKeyword) return 'undefined';
+	return undefined;
+}
+
+function isStringLikeExpression(
+	ts: typeof TS,
+	expr: TS.Expression
+): expr is TS.StringLiteral | TS.NoSubstitutionTemplateLiteral {
+	return ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr);
+}
+
+function isConstVariableDeclaration(
+	ts: typeof TS,
+	decl: TS.VariableDeclaration
+): boolean {
+	return (
+		ts.isVariableDeclarationList(decl.parent) &&
+		(decl.parent.flags & ts.NodeFlags.Const) !== 0
+	);
+}
+
+function hasModifier(
+	_ts: typeof TS,
+	node: TS.Node & { modifiers?: TS.NodeArray<TS.ModifierLike> },
+	kind: TS.SyntaxKind
+): boolean {
+	return node.modifiers?.some((modifier) => modifier.kind === kind) ?? false;
 }
 
 export function getDeprecatedTag(

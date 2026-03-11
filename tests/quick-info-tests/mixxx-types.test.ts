@@ -102,6 +102,22 @@ describe('Mixxx Types Param Docs Tests', () => {
 		expect(result?.tags?.some((tag) => tag.name === 'groups')).toBe(false);
 	});
 
+	it('should find beatjump docs when the group comes from a const', () => {
+		const cursorPos = code.indexOf(
+			`setValue(channelGroup, 'beatjump_4_backward', 42)`
+		);
+		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
+		expect(result).toBeDefined();
+
+		const text = tagsToText(result);
+		expect(text).toContain(
+			'Each deck in Mixxx corresponds to a [ChannelN] group. Whenever you see [ChannelN], think “Deck N”. N can range from 1 to the number of active decks in Mixxx.'
+		);
+		expect(tagText(result?.tags, 'param')).toContain(
+			'Name of the control e.g. "play_indicator"\n> Jump backward by X beats.'
+		);
+	});
+
 	it('should render multiline range tables inside the param hover', () => {
 		const cursorPos = code.indexOf(`getValue('[Channel1]', 'cue_mode')`);
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);

@@ -42,6 +42,8 @@ function setValue<TGroup extends MixxxControls.Group>(
 setValue('[Channel1]', 'beatjump_4_backward', 42);
 setValue('[Sampler1]', 'rate_up_small', 1);
 setValue('[EffectRack1_EffectUnit1_Effect1]', 'parameter1_down_small', 1);
+const channelGroup: MixxxControls.Group = '[Channel1]';
+setValue(channelGroup, 'beatjump_4_backward', 42);
 getValue('[Channel1]', 'cue_mode');
 
 /*

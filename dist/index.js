@@ -356,7 +356,8 @@ class TypeInfoFactory {
     return paramTypes;
   }
   getValue(expr) {
-    return this.ts.isLiteralExpression(expr) ? expr.text : expr.getText();
+    const resolvedExpr = this.resolveExpression(expr);
+    return getExpressionValueText(this.ts, resolvedExpr) ?? expr.getText();
   }
   collectUnionMemberNodes(node, callParent, typeArgMap) {
     const ts = this.ts;
@@ -565,17 +566,18 @@ class TypeInfoFactory {
     return map;
   }
   cmp(expr, node) {
-    if (isRegexNode(node) && this.ts.isStringLiteral(expr)) {
+    const resolvedExpr = this.resolveExpression(expr);
+    if (isRegexNode(node) && isStringLikeExpression(this.ts, resolvedExpr)) {
       const pattern = new RegExp(`^${node.text}$`);
-      return pattern.test(expr.text);
+      return pattern.test(resolvedExpr.text);
     }
-    if (node.isRegexPattern === false) return this.cmpLit(expr, node);
+    if (node.isRegexPattern === false) return this.cmpLit(resolvedExpr, node);
     if (!this.ts.isLiteralTypeNode(node)) return false;
-    return this.cmpLit(expr, node.literal);
+    return this.cmpLit(resolvedExpr, node.literal);
   }
   cmpLit(expr, typeLiteral) {
     const ts = this.ts;
-    if (ts.isStringLiteral(expr) && ts.isStringLiteral(typeLiteral))
+    if (isStringLikeExpression(ts, expr) && ts.isStringLiteral(typeLiteral))
       return expr.text === typeLiteral.text;
     if (ts.isNumericLiteral(expr) && ts.isNumericLiteral(typeLiteral))
       return expr.text === typeLiteral.text;
@@ -588,6 +590,64 @@ class TypeInfoFactory {
     if (expr.kind === ts.SyntaxKind.UndefinedKeyword && typeLiteral.kind === ts.SyntaxKind.UndefinedKeyword)
       return true;
     return false;
+  }
+  resolveExpression(expr, visited = /* @__PURE__ */ new Set()) {
+    const unwrappedExpr = this.unwrapExpression(expr);
+    if (visited.has(unwrappedExpr)) return unwrappedExpr;
+    visited.add(unwrappedExpr);
+    const symbol = this.getReferencedSymbol(unwrappedExpr);
+    if (!symbol) return unwrappedExpr;
+    const initializer = this.getConstInitializer(symbol);
+    if (!initializer) return unwrappedExpr;
+    return this.resolveExpression(initializer, visited);
+  }
+  unwrapExpression(expr) {
+    let current = expr;
+    while (true) {
+      if (this.ts.isParenthesizedExpression(current)) {
+        current = current.expression;
+        continue;
+      }
+      if (this.ts.isAsExpression(current)) {
+        current = current.expression;
+        continue;
+      }
+      if (this.ts.isTypeAssertionExpression(current)) {
+        current = current.expression;
+        continue;
+      }
+      if (this.ts.isSatisfiesExpression?.(current)) {
+        current = current.expression;
+        continue;
+      }
+      if (this.ts.isNonNullExpression(current)) {
+        current = current.expression;
+        continue;
+      }
+      return current;
+    }
+  }
+  getReferencedSymbol(expr) {
+    if (!this.ts.isIdentifier(expr) && !this.ts.isPropertyAccessExpression(expr))
+      return null;
+    const location = this.ts.isIdentifier(expr) ? expr : expr.name;
+    const symbol = this.checker.getSymbolAtLocation(location);
+    if (!symbol) return null;
+    return symbol.flags & this.ts.SymbolFlags.Alias ? this.checker.getAliasedSymbol(symbol) : symbol;
+  }
+  getConstInitializer(symbol) {
+    for (const decl of symbol.getDeclarations() ?? []) {
+      if (this.ts.isVariableDeclaration(decl)) {
+        if (!isConstVariableDeclaration(this.ts, decl)) continue;
+        if (decl.initializer) return decl.initializer;
+      }
+      if (this.ts.isPropertyDeclaration(decl)) {
+        if (!hasModifier(this.ts, decl, this.ts.SyntaxKind.ReadonlyKeyword))
+          continue;
+        if (decl.initializer) return decl.initializer;
+      }
+    }
+    return null;
   }
   getCompletionEntryName(node) {
     if (!this.ts.isLiteralTypeNode(node)) return null;
@@ -714,6 +774,24 @@ function getNodeText(node) {
   const text = node.getSourceFile()?.text;
   if (!text) return "<No Source>";
   return text.substring(node.getStart(), node.getEnd());
+}
+function getExpressionValueText(ts, expr) {
+  if (isStringLikeExpression(ts, expr)) return expr.text;
+  if (ts.isNumericLiteral(expr) || ts.isBigIntLiteral(expr)) return expr.text;
+  if (expr.kind === ts.SyntaxKind.TrueKeyword) return "true";
+  if (expr.kind === ts.SyntaxKind.FalseKeyword) return "false";
+  if (expr.kind === ts.SyntaxKind.NullKeyword) return "null";
+  if (expr.kind === ts.SyntaxKind.UndefinedKeyword) return "undefined";
+  return void 0;
+}
+function isStringLikeExpression(ts, expr) {
+  return ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr);
+}
+function isConstVariableDeclaration(ts, decl) {
+  return ts.isVariableDeclarationList(decl.parent) && (decl.parent.flags & ts.NodeFlags.Const) !== 0;
+}
+function hasModifier(_ts, node, kind) {
+  return node.modifiers?.some((modifier) => modifier.kind === kind) ?? false;
 }
 function getDeprecatedTag(tags) {
   return tags?.find((tag) => tag.name === "deprecated");

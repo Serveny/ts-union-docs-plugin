@@ -82,6 +82,10 @@ export declare class TypeInfoFactory {
     private buildTypeArgumentMap;
     private cmp;
     private cmpLit;
+    private resolveExpression;
+    private unwrapExpression;
+    private getReferencedSymbol;
+    private getConstInitializer;
     private getCompletionEntryName;
 }
 export declare function getDeprecatedTag(tags: readonly TS.JSDocTagInfo[] | undefined): TS.JSDocTagInfo | undefined;
