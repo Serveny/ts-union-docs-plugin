@@ -318,7 +318,14 @@ export class TypeInfoFactory {
 		const decl = paramSymbol.valueDeclaration;
 		if (!decl || !this.ts.isParameter(decl) || !decl.type) return null;
 
-		const unionMemberNodes = this.collectUnionMemberNodes(decl.type);
+		const typeArgMap = this.isDirectTypeParameterReference(decl.type)
+			? undefined
+			: this.buildCallTypeParameterMap(arg, decl);
+		const unionMemberNodes = this.collectUnionMemberNodes(
+			decl.type,
+			undefined,
+			typeArgMap
+		);
 		if (unionMemberNodes.length === 0) return null;
 
 		const valueNodes = unionMemberNodes.filter((entry) => this.cmp(arg, entry));
@@ -330,6 +337,123 @@ export class TypeInfoFactory {
 			valueNodes,
 			this.getValue(arg)
 		);
+	}
+
+	private buildCallTypeParameterMap(
+		arg: TS.Expression,
+		paramDecl: TS.ParameterDeclaration
+	): Map<TS.Symbol, TS.TypeNode> | undefined {
+		const signatureDecl = paramDecl.parent;
+		if (!isSignatureDeclaration(this.ts, signatureDecl)) return undefined;
+
+		const typeParams = signatureDecl.typeParameters ?? [];
+		if (typeParams.length === 0) return undefined;
+
+		const callLike = this.findCallLikeExpression(arg);
+		if (!callLike) return undefined;
+
+		const map = new Map<TS.Symbol, TS.TypeNode>();
+		for (let i = 0; i < typeParams.length; i++) {
+			const typeParam = typeParams[i];
+			const symbol = this.checker.getSymbolAtLocation(typeParam.name);
+			if (!symbol) continue;
+
+			const explicitArg = callLike.typeArguments?.[i];
+			if (explicitArg) {
+				map.set(symbol, explicitArg);
+				continue;
+			}
+
+			const inferredArg = this.inferTypeArgumentFromParameters(
+				callLike,
+				signatureDecl,
+				symbol
+			);
+			if (inferredArg) map.set(symbol, inferredArg);
+		}
+
+		return map.size > 0 ? map : undefined;
+	}
+
+	private inferTypeArgumentFromParameters(
+		callLike: TS.CallExpression | TS.NewExpression,
+		signatureDecl: TS.SignatureDeclaration,
+		typeParamSymbol: TS.Symbol
+	): TS.TypeNode | undefined {
+		const args = callLike.arguments ?? [];
+		const params = signatureDecl.parameters;
+
+		for (let i = 0; i < Math.min(args.length, params.length); i++) {
+			const param = params[i];
+			if (!param.type) continue;
+
+			const referencedSymbol = this.getTypeReferenceSymbol(param.type);
+			if (referencedSymbol !== typeParamSymbol) continue;
+
+			const inferredType = this.createTypeNodeFromExpression(args[i]);
+			if (inferredType) return inferredType;
+		}
+
+		return undefined;
+	}
+
+	private getTypeReferenceSymbol(typeNode: TS.TypeNode): TS.Symbol | null {
+		if (!this.ts.isTypeReferenceNode(typeNode)) return null;
+
+		const symbol = this.checker.getSymbolAtLocation(typeNode.typeName);
+		if (!symbol) return null;
+
+		return symbol.flags & this.ts.SymbolFlags.Alias
+			? this.checker.getAliasedSymbol(symbol)
+			: symbol;
+	}
+
+	private isDirectTypeParameterReference(typeNode: TS.TypeNode): boolean {
+		const symbol = this.getTypeReferenceSymbol(typeNode);
+		return symbol?.declarations?.some((decl) =>
+			this.ts.isTypeParameterDeclaration(decl)
+		)
+			? true
+			: false;
+	}
+
+	private createTypeNodeFromExpression(
+		expr: TS.Expression
+	): TS.TypeNode | undefined {
+		const resolvedExpr = this.resolveExpression(expr);
+		const ts = this.ts;
+
+		if (isStringLikeExpression(ts, resolvedExpr)) {
+			return ts.factory.createLiteralTypeNode(
+				ts.factory.createStringLiteral(resolvedExpr.text)
+			);
+		}
+
+		if (ts.isNumericLiteral(resolvedExpr)) {
+			return ts.factory.createLiteralTypeNode(
+				ts.factory.createNumericLiteral(resolvedExpr.text)
+			);
+		}
+
+		if (ts.isBigIntLiteral(resolvedExpr)) {
+			return ts.factory.createLiteralTypeNode(
+				ts.factory.createBigIntLiteral(resolvedExpr.text)
+			);
+		}
+
+		if (resolvedExpr.kind === ts.SyntaxKind.TrueKeyword) {
+			return ts.factory.createLiteralTypeNode(ts.factory.createTrue());
+		}
+
+		if (resolvedExpr.kind === ts.SyntaxKind.FalseKeyword) {
+			return ts.factory.createLiteralTypeNode(ts.factory.createFalse());
+		}
+
+		if (resolvedExpr.kind === ts.SyntaxKind.NullKeyword) {
+			return ts.factory.createLiteralTypeNode(ts.factory.createNull());
+		}
+
+		return undefined;
 	}
 
 	private getUnionVariableInfo(symbol: TS.Symbol): UnionInfo | null {
@@ -573,7 +697,11 @@ export class TypeInfoFactory {
 			ts.isTypeOperatorNode(node) &&
 			node.operator === ts.SyntaxKind.KeyOfKeyword
 		)
-			return this.collectKeyOfKeywordTypeOperatorNode(node, callParent);
+			return this.collectKeyOfKeywordTypeOperatorNode(
+				node,
+				callParent,
+				typeArgMap
+			);
 
 		// e.g. (string | number)[]
 		if (ts.isParenthesizedTypeNode(node))
@@ -622,8 +750,24 @@ export class TypeInfoFactory {
 		node: TS.IndexedAccessTypeNode,
 		typeArgMap?: Map<TS.Symbol, TS.TypeNode>
 	): CalledNode[] {
+		const resolvedObjectType =
+			this.resolveMappedTypeNode(node.objectType, typeArgMap) ?? node.objectType;
+		const indexValues = this.collectLiteralValues(node.indexType, typeArgMap);
+		if (indexValues.size > 0) {
+			const objectType = this.checker.getTypeAtLocation(resolvedObjectType);
+			const resolvedMembers = [...indexValues].flatMap((indexValue) =>
+				this.getIndexedAccessMembersForKey(
+					objectType,
+					indexValue,
+					node,
+					typeArgMap
+				)
+			);
+			if (resolvedMembers.length > 0) return resolvedMembers;
+		}
+
 		return [
-			...this.collectUnionMemberNodes(node.objectType, node, typeArgMap),
+			...this.collectUnionMemberNodes(resolvedObjectType, node, typeArgMap),
 			...this.collectUnionMemberNodes(node.indexType, node, typeArgMap),
 		];
 	}
@@ -657,6 +801,52 @@ export class TypeInfoFactory {
 				...this.collectUnionMemberNodes(node.type, node, typeArgMap)
 			);
 		return results;
+	}
+
+	private resolveMappedTypeNode(
+		node: TS.TypeNode,
+		typeArgMap?: Map<TS.Symbol, TS.TypeNode>
+	): TS.TypeNode | undefined {
+		const symbol = this.getTypeReferenceSymbol(node);
+		return symbol ? typeArgMap?.get(symbol) : undefined;
+	}
+
+	private collectLiteralValues(
+		node: TS.TypeNode,
+		typeArgMap?: Map<TS.Symbol, TS.TypeNode>
+	): Set<string> {
+		const values = new Set<string>();
+		for (const member of this.collectUnionMemberNodes(node, undefined, typeArgMap)) {
+			const value = getTypeNodeValueText(this.ts, member);
+			if (value != null) values.add(value);
+		}
+		return values;
+	}
+
+	private getIndexedAccessMembersForKey(
+		objectType: TS.Type,
+		key: string,
+		callParent: TS.Node,
+		typeArgMap?: Map<TS.Symbol, TS.TypeNode>
+	): CalledNode[] {
+		const property = objectType.getProperty(key);
+		const decls = property?.getDeclarations() ?? [];
+
+		return decls.flatMap((decl) => {
+			if (
+				(this.ts.isPropertySignature(decl) ||
+					this.ts.isPropertyDeclaration(decl)) &&
+				decl.type
+			) {
+				return this.collectUnionMemberNodes(decl.type, callParent, typeArgMap);
+			}
+
+			if (this.ts.isTypeAliasDeclaration(decl)) {
+				return this.collectUnionMemberNodes(decl.type, callParent, typeArgMap);
+			}
+
+			return [];
+		});
 	}
 
 	private collectTypeReferenceNode(
@@ -694,11 +884,13 @@ export class TypeInfoFactory {
 
 	private collectKeyOfKeywordTypeOperatorNode(
 		node: TS.TypeOperatorNode,
-		callParent?: TS.Node
+		callParent?: TS.Node,
+		typeArgMap?: Map<TS.Symbol, TS.TypeNode>
 	): CalledNode[] {
 		const ts = this.ts,
 			checker = this.checker,
-			type = checker.getTypeAtLocation(node.type);
+			targetTypeNode = this.resolveMappedTypeNode(node.type, typeArgMap) ?? node.type,
+			type = checker.getTypeAtLocation(targetTypeNode);
 		return type.getProperties().map((prop) => {
 			const decl = prop.getDeclarations()?.[0];
 			const litNode = ts.factory.createLiteralTypeNode(
@@ -1214,6 +1406,23 @@ function getExpressionValueText(
 	return undefined;
 }
 
+function getTypeNodeValueText(
+	ts: typeof TS,
+	node: TS.Node
+): string | undefined {
+	if (!ts.isLiteralTypeNode(node)) return undefined;
+
+	const literal = node.literal;
+	if (ts.isStringLiteral(literal) || ts.isNumericLiteral(literal)) {
+		return literal.text;
+	}
+	if (ts.isBigIntLiteral(literal)) return literal.text;
+	if (literal.kind === ts.SyntaxKind.TrueKeyword) return 'true';
+	if (literal.kind === ts.SyntaxKind.FalseKeyword) return 'false';
+	if (literal.kind === ts.SyntaxKind.NullKeyword) return 'null';
+	return undefined;
+}
+
 function isStringLikeExpression(
 	ts: typeof TS,
 	expr: TS.Expression
@@ -1237,6 +1446,26 @@ function hasModifier(
 	kind: TS.SyntaxKind
 ): boolean {
 	return node.modifiers?.some((modifier) => modifier.kind === kind) ?? false;
+}
+
+function isSignatureDeclaration(
+	ts: typeof TS,
+	node: TS.Node
+): node is TS.SignatureDeclaration {
+	return (
+		ts.isCallSignatureDeclaration(node) ||
+		ts.isConstructSignatureDeclaration(node) ||
+		ts.isMethodSignature(node) ||
+		ts.isFunctionTypeNode(node) ||
+		ts.isConstructorTypeNode(node) ||
+		ts.isFunctionDeclaration(node) ||
+		ts.isMethodDeclaration(node) ||
+		ts.isConstructorDeclaration(node) ||
+		ts.isGetAccessorDeclaration(node) ||
+		ts.isSetAccessorDeclaration(node) ||
+		ts.isFunctionExpression(node) ||
+		ts.isArrowFunction(node)
+	);
 }
 
 export function getDeprecatedTag(

@@ -127,4 +127,27 @@ describe('Mixxx Types Param Docs Tests', () => {
 		expect(paramText).toContain('> |5.0|CUP (Cue + Play) mode|');
 		expect(paramText).toContain('> \n> _@feedback_ None');
 	});
+
+	it('should only show docs for the concrete [Samplers] group', () => {
+		const cursorPos = code.indexOf(`getValue('[Samplers]', 'show_samplers')`);
+		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
+		expect(result).toBeDefined();
+
+		const paramText = tagText(result?.tags, 'param') ?? '';
+		expect(paramText).toContain(
+			'> The [Samplers] group contains deprecated controls for showing sampler banks in the user interface of Mixxx.'
+		);
+		expect(paramText).toContain(
+			'Name of the control e.g. "play_indicator"\n> (No description)'
+		);
+		expect(paramText).toContain(
+			'> _@deprecated_ since version 2.4.0: Use [Skin],show_samplers instead.'
+		);
+		expect(paramText).not.toContain(
+			'> The [Skin] group contains controls that are used to selective show and hide parts of the graphical user interface of Mixxx to suit your needs.'
+		);
+		expect(paramText).not.toContain(
+			'> Toggle the display of sampler banks in the user interface.'
+		);
+	});
 });

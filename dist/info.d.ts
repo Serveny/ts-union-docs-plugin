@@ -56,6 +56,11 @@ export declare class TypeInfoFactory {
     private getUnionExpressionInfo;
     private getExpressionName;
     private getUnionInfo;
+    private buildCallTypeParameterMap;
+    private inferTypeArgumentFromParameters;
+    private getTypeReferenceSymbol;
+    private isDirectTypeParameterReference;
+    private createTypeNodeFromExpression;
     private getUnionVariableInfo;
     private createCompletionEntryInfos;
     private createUnionInfo;
@@ -73,6 +78,9 @@ export declare class TypeInfoFactory {
     private collectIndexedAccessTypeNode;
     private collectTypeLiteralNode;
     private collectMappedTypeNode;
+    private resolveMappedTypeNode;
+    private collectLiteralValues;
+    private getIndexedAccessMembersForKey;
     private collectTypeReferenceNode;
     private collectKeyOfKeywordTypeOperatorNode;
     private collectTupleTypeNode;
