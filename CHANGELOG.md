@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.1]
+
+- **Fixed** Quick Info Markdown line breaks
+
 ## [0.3.0]
 
 - **Added** Deprecated union member diagnostics and completion coverage for deprecated members
