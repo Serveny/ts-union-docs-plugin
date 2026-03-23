@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.2]
+
+- **Fixed** Completion inference for generic parameter constraints
+- **Fixed** Constructor union docs and generic completions
+
 ## [0.3.1]
 
 - **Fixed** Quick Info Markdown line breaks
