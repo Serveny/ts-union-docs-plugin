@@ -47,6 +47,33 @@ setValue(channelGroup, 'beatjump_4_backward', 42);
 getValue('[Channel1]', 'cue_mode');
 getValue('[Samplers]', 'show_samplers');
 
+// Test types in class structure
+
+class Button<TGroup extends MixxxControls.Group> {
+	constructor(
+		public group: TGroup,
+		public inKey: MixxxControls.CtrlRW<TGroup>, // Controls that are Read or Write
+		public outKey: MixxxControls.Ctrl<TGroup> // Controls that are Read and Write
+	) {}
+
+	enable(): void {
+		setValue(this.group, this.inKey, 1);
+	}
+
+	read(): number {
+		return getValue(this.group, this.outKey);
+	}
+}
+
+const playBtn = new Button('[Channel2]', 'play', 'play_indicator');
+// @ts-ignore
+const samplerBtn = new Button('[Sampler]', '', '');
+const clearBtn = new Button(
+	'[EffectRack1_EffectUnit3_Effect3]',
+	'clear',
+	'clear'
+);
+const noneBtn = new Button('', '', '');
 /*
  * ===================================================
  * Mixxx control types

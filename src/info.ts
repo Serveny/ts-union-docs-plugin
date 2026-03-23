@@ -24,6 +24,7 @@ export interface CompletionContextInfo {
 	initNode: TS.Expression;
 	templateInfo: UnionInfo | null;
 	entryInfos: UnionInfo[];
+	templateFilterType?: TS.Type;
 }
 
 export interface DeprecatedUsageInfo {
@@ -86,7 +87,7 @@ export class TypeInfoFactory {
 		);
 		const templateEntries = this.filterRegexMembers(
 			unionMemberNodes,
-			context.contextualType
+			context.templateFilterType ?? context.contextualType
 		);
 
 		const result = {
@@ -104,6 +105,7 @@ export class TypeInfoFactory {
 				context.node,
 				unionMemberNodes
 			),
+			templateFilterType: context.templateFilterType,
 		};
 		this.completionInfoCache.set(cacheKey, result);
 		return result;
@@ -203,6 +205,7 @@ export class TypeInfoFactory {
 			contextualType,
 			typeNode,
 			typeArgMap: parameterContext?.typeArgMap,
+			templateFilterType: parameterContext?.templateFilterType,
 		};
 	}
 
@@ -218,10 +221,31 @@ export class TypeInfoFactory {
 		const paramDecl = paramSymbol?.getDeclarations()?.[0];
 		if (!paramDecl || !this.ts.isParameter(paramDecl) || !paramDecl.type) return null;
 
+		const typeArgMap = this.buildCallTypeParameterMap(node, paramDecl);
+		const resolvedTypeNode =
+			this.resolveMappedTypeNode(paramDecl.type, typeArgMap) ?? paramDecl.type;
+		const completionTypeNode =
+			this.isDirectTypeParameterReference(paramDecl.type) &&
+			this.ts.isLiteralTypeNode(resolvedTypeNode)
+				? this.getTypeParameterConstraintNode(paramDecl.type) ?? paramDecl.type
+				: paramDecl.type;
+
 		return {
-			typeNode: paramDecl.type,
-			typeArgMap: this.buildCallTypeParameterMap(node, paramDecl),
+			typeNode: completionTypeNode,
+			typeArgMap,
+			templateFilterType:
+				resolvedTypeNode === paramDecl.type
+					? undefined
+					: this.checker.getTypeAtLocation(resolvedTypeNode),
 		};
+	}
+
+	private getTypeParameterConstraintNode(typeNode: TS.TypeNode): TS.TypeNode | null {
+		const symbol = this.getTypeReferenceSymbol(typeNode);
+		const decl = symbol?.declarations?.[0];
+		return decl && this.ts.isTypeParameterDeclaration(decl)
+			? decl.constraint ?? null
+			: null;
 	}
 
 	private resolveTypeNode(
@@ -375,13 +399,24 @@ export class TypeInfoFactory {
 		const signatureDecl = paramDecl.parent;
 		if (!isSignatureDeclaration(this.ts, signatureDecl)) return undefined;
 
-		const typeParams = signatureDecl.typeParameters ?? [];
-		if (typeParams.length === 0) return undefined;
-
 		const callLike = this.findCallLikeExpression(arg);
 		if (!callLike) return undefined;
 
 		const map = new Map<TS.Symbol, TS.TypeNode>();
+		this.addSignatureTypeParameterMappings(map, callLike, signatureDecl);
+		this.addEnclosingTypeParameterMappings(map, callLike, signatureDecl);
+
+		return map.size > 0 ? map : undefined;
+	}
+
+	private addSignatureTypeParameterMappings(
+		map: Map<TS.Symbol, TS.TypeNode>,
+		callLike: TS.CallExpression | TS.NewExpression,
+		signatureDecl: TS.SignatureDeclaration
+	) {
+		const typeParams = signatureDecl.typeParameters ?? [];
+		if (typeParams.length === 0) return;
+
 		for (let i = 0; i < typeParams.length; i++) {
 			const typeParam = typeParams[i];
 			const symbol = this.checker.getSymbolAtLocation(typeParam.name);
@@ -402,8 +437,34 @@ export class TypeInfoFactory {
 			const normalizedArg = this.normalizeTypeArgument(typeParam, inferredArg);
 			if (normalizedArg) map.set(symbol, normalizedArg);
 		}
+	}
 
-		return map.size > 0 ? map : undefined;
+	private addEnclosingTypeParameterMappings(
+		map: Map<TS.Symbol, TS.TypeNode>,
+		callLike: TS.CallExpression | TS.NewExpression,
+		signatureDecl: TS.SignatureDeclaration
+	) {
+		const enclosingDecl = signatureDecl.parent;
+		if (!isClassLikeTypeParameterOwner(this.ts, enclosingDecl)) return;
+
+		const instanceType = this.checker.getTypeAtLocation(callLike);
+		const typeArgs = this.checker.getTypeArguments(instanceType as TS.TypeReference);
+		const typeParams = enclosingDecl.typeParameters ?? [];
+		if (typeArgs.length === 0 || typeParams.length === 0) return;
+
+		for (let i = 0; i < Math.min(typeParams.length, typeArgs.length); i++) {
+			const typeParam = typeParams[i];
+			const symbol = this.checker.getSymbolAtLocation(typeParam.name);
+			if (!symbol) continue;
+
+			const typeArgNode = this.checker.typeToTypeNode(
+				typeArgs[i],
+				signatureDecl,
+				this.ts.NodeBuilderFlags.NoTruncation
+			);
+			const normalizedArg = this.normalizeTypeArgument(typeParam, typeArgNode);
+			if (normalizedArg) map.set(symbol, normalizedArg);
+		}
 	}
 
 	private inferTypeArgumentFromParameters(
@@ -1508,6 +1569,17 @@ function isSignatureDeclaration(
 		ts.isSetAccessorDeclaration(node) ||
 		ts.isFunctionExpression(node) ||
 		ts.isArrowFunction(node)
+	);
+}
+
+function isClassLikeTypeParameterOwner(
+	ts: typeof TS,
+	node: TS.Node
+): node is TS.ClassDeclaration | TS.ClassExpression | TS.InterfaceDeclaration {
+	return (
+		ts.isClassDeclaration(node) ||
+		ts.isClassExpression(node) ||
+		ts.isInterfaceDeclaration(node)
 	);
 }
 

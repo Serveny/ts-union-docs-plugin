@@ -17,6 +17,7 @@ export interface CompletionContextInfo {
     initNode: TS.Expression;
     templateInfo: UnionInfo | null;
     entryInfos: UnionInfo[];
+    templateFilterType?: TS.Type;
 }
 export interface DeprecatedUsageInfo {
     node: TS.Expression;
@@ -47,6 +48,8 @@ export declare class TypeInfoFactory {
     private getTypeInfoForExpression;
     private getUnionInfoForArgument;
     private getCompletionContext;
+    private getParameterTypeContext;
+    private getTypeParameterConstraintNode;
     private resolveTypeNode;
     private getTypeNodeFromAlias;
     private getTypeNodeFromParameter;
@@ -57,7 +60,10 @@ export declare class TypeInfoFactory {
     private getExpressionName;
     private getUnionInfo;
     private buildCallTypeParameterMap;
+    private addSignatureTypeParameterMappings;
+    private addEnclosingTypeParameterMappings;
     private inferTypeArgumentFromParameters;
+    private normalizeTypeArgument;
     private getTypeReferenceSymbol;
     private isDirectTypeParameterReference;
     private createTypeNodeFromExpression;

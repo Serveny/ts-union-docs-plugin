@@ -179,12 +179,23 @@ function addParamTagDescription(
 	const newTag = cloneTag(oldTag);
 	const docText = formatQuotedParamDocComment(docComment, extraTags);
 	if (!docText) return newTag;
-	if (!newTag.text) newTag.text = [];
-	if (newTag.text.length > 0) {
-		newTag.text.push(createTextDisplayPart('\n'));
-	}
-	newTag.text.push(createMarkdownDisplayPart(docText));
+	const paramName = getParamTagName(oldTag);
+	newTag.text = [
+		createTextDisplayPart(paramName),
+		createTextDisplayPart('\n'),
+		createMarkdownDisplayPart(docText),
+	];
 	return newTag;
+}
+
+function getParamTagName(tag: TS.JSDocTagInfo): string {
+	const text = getTagText(tag)?.trim();
+	if (text) return text;
+
+	const parameterName = tag.text?.find((part) => part.kind === 'parameterName')?.text;
+	if (parameterName) return parameterName;
+
+	return 'param';
 }
 
 function formatDocComment(lines: string[]): string {

@@ -68,7 +68,9 @@ describe('Mixxx Types Param Docs Tests', () => {
 		expect(tagText(result?.tags, 'param')).toContain(
 			'> _@groups_ [ChannelN], [PreviewDeckN], [SamplerN]\n> \n> _@range_ -1.0..1.0'
 		);
-		expect(tagText(result?.tags, 'param')).toContain('> _@feedback_ Speed slider');
+		expect(tagText(result?.tags, 'param')).toContain(
+			'> _@feedback_ Speed slider'
+		);
 		expect(tagText(result?.tags, 'param')).toContain(
 			'> _@kind_ pot meter control'
 		);
@@ -149,5 +151,76 @@ describe('Mixxx Types Param Docs Tests', () => {
 		expect(paramText).not.toContain(
 			'> Toggle the display of sampler banks in the user interface.'
 		);
+	});
+
+	it('should find doc comment of union type constructor params', () => {
+		const cursorPos =
+			code.indexOf(
+				`const playBtn = new Button('[Channel2]', 'play', 'play_indicator');`
+			) + 24;
+		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
+		const paramText = tagText(result?.tags, 'param');
+		expect(result).toBeDefined();
+		expect(paramText).toContain(`group
+> Each deck in Mixxx corresponds to a [ChannelN] group.
+> Whenever you see [ChannelN], think “Deck N”.
+> N can range from 1 to the number of active decks in Mixxx.`);
+		expect(paramText).toContain(`inKey
+> Toggles playing or pausing the track.
+> The value is set to 1 when the track is playing or when previewing from cue points and when the play command is adopted and track will be played after loading.`);
+		expect(paramText).toContain(
+			`> _@groups_ [ChannelN], [PreviewDeckN], [SamplerN]`
+		);
+		expect(paramText).toContain(`> _@range_ binary`);
+		expect(paramText).toContain(`> _@feedback_ Play/pause button`);
+		expect(paramText).toContain(`outKey
+> Provides information to be bound with the a Play/Pause button e.g blinking when play is possible`);
+		expect(paramText).toContain(`> _@since_ New in version 2.0.0.`);
+		expect(paramText).toContain(`> _@readonly_`);
+	});
+
+	it('should render constructor param docs on a new line without inline dash text', () => {
+		const cursorPos =
+			code.indexOf(`const samplerBtn = new Button('[Sampler]', '', '');`) + 27;
+		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
+		const paramText = tagText(result?.tags, 'param') ?? '';
+		const groupTag = result?.tags?.find(
+			(tag) =>
+				tag.name === 'param' &&
+				(tag.text?.[0]?.text?.toLowerCase() === 'group' ||
+					tag.text?.[0]?.text?.toLowerCase().startsWith('group\n'))
+		);
+
+		expect(result).toBeDefined();
+		expect(paramText).toContain(`group
+> The [Sampler] group contains global controls for managing sampler banks.`);
+		expect(paramText).not.toContain('group -');
+		expect(paramText).not.toContain('group —');
+		expect(groupTag).toBeDefined();
+		expect(groupTag?.text?.some((part) => part.kind === 'parameterName')).toBe(false);
+		expect(groupTag?.text?.some((part) => part.text.includes(' - '))).toBe(false);
+		expect(groupTag?.text?.some((part) => part.text.includes(' — '))).toBe(false);
+	});
+
+	it('should find doc comment of union type constructor params 2', () => {
+		const cursorPos = code.indexOf(`const clearBtn = new Button(`) + 24;
+		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
+		const paramText = tagText(result?.tags, 'param');
+		expect(result).toBeDefined();
+		expect(paramText).toContain(`group
+> The [EffectRack1_EffectUnitN_EffectM] group contains controls for a single effect slot within an effects unit.`);
+		expect(paramText).toContain(`inKey
+> Clear the currently loaded EffectChain in this EffectUnit.
+> Clear the currently loaded Effect in this Effect slot from the EffectUnit.`);
+		expect(paramText).toContain(
+			`> _@groups_ [EffectRack1_EffectUnitN], [EqualizerRack1_[ChannelI]], [QuickEffectRack1_[ChannelI]], [QuickEffectRack1_[ChannelI_StemJ]]`
+		);
+		expect(paramText).toContain(`> _@range_ binary`);
+		expect(paramText).toContain(
+			`> _@groups_ [EffectRack1_EffectUnitN_EffectM], [EqualizerRack1_[ChannelI]_Effect1], [QuickEffectRack1_[ChannelI]_Effect1], [QuickEffectRack1_[ChannelI_StemJ]_Effect1]`
+		);
+		expect(paramText).toContain(`outKey
+> Clear the currently loaded EffectChain in this EffectUnit.
+> Clear the currently loaded Effect in this Effect slot from the EffectUnit.`);
 	});
 });

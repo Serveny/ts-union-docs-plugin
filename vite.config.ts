@@ -27,7 +27,6 @@ export default defineConfig({
 			external: ['typescript'],
 			output: {
 				entryFileNames: `index.js`,
-				interop: 'auto',
 			},
 		},
 		minify: false,

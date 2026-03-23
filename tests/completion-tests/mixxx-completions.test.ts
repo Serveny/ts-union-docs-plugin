@@ -105,4 +105,85 @@ describe('Mixxx Types Param Completion Tests', () => {
 			'loop_move_0_forward',
 		]);
 	});
+
+	it('should suggest dynamic Mixxx groups for constructor parameters', () => {
+		const cursorPos =
+			code.indexOf(`const noneBtn = new Button('', '', '');`) + 28;
+		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
+
+		expect(result).toBeDefined();
+		expect(completionSnippetNames(result!)).toStrictEqual([
+			`[Auxiliary0]`,
+			`[Channel0]`,
+			`[Channel0_Stem0]`,
+			`[EffectRack1_EffectUnit0]`,
+			`[EffectRack1_EffectUnit0_Effect0]`,
+			`[EqualizerRack1_[Channel0]]`,
+			`[EqualizerRack1_[Channel0]_Effect1]`,
+			`[Microphone0]`,
+			`[PreviewDeck0]`,
+			`[QuickEffectRack1_[Channel0]]`,
+			`[QuickEffectRack1_[Channel0]_Effect1]`,
+			`[QuickEffectRack1_[Channel0_Stem0]]`,
+			`[QuickEffectRack1_[Channel0_Stem0]_Effect1]`,
+			`[Sampler0]`,
+		]);
+	});
+
+	it('should suggest dynamic Mixxx controls for constructor parameters', () => {
+		const cursorPos =
+			code.indexOf(`const noneBtn = new Button('', '', '');`) + 32;
+		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
+
+		expect(result).toBeDefined();
+		expect(completionSnippetNames(result!)).toStrictEqual([
+			'PeakIndicator0',
+			'VuMeter0',
+			'beatjump_0_backward',
+			'beatjump_0_forward',
+			'beatloop_r0_activate',
+			'beatloop_0',
+			'beatloop_0_activate',
+			'beatloop_0_enabled',
+			'beatloop_0_toggle',
+			'beatlooproll_r0_activate',
+			'beatlooproll_0_activate',
+			'hotcue_0_activate',
+			'hotcue_0_activatecue',
+			'hotcue_0_activateloop',
+			'hotcue_0_clear',
+			'hotcue_0_color',
+			'hotcue_0_cueloop',
+			'hotcue_0_enabled',
+			'hotcue_0_goto',
+			'hotcue_0_gotoandloop',
+			'hotcue_0_gotoandplay',
+			'hotcue_0_gotoandstop',
+			'hotcue_0_position',
+			'hotcue_0_set',
+			'hotcue_0_setcue',
+			'hotcue_0_setloop',
+			'hotcue_0_status',
+			'hotcue_0_swap',
+			'hotcue_0_type',
+			'loop_move_0_backward',
+			'loop_move_0_forward',
+			'group_[Sampler0]_enable',
+			'group_[Channel0]_enable',
+			'button_parameter0',
+			'parameter0',
+			'parameter0_down',
+			'parameter0_down_small',
+			'parameter0_minus_toggle',
+			'parameter0_set_default',
+			'parameter0_set_minus_one',
+			'parameter0_set_one',
+			'parameter0_set_zero',
+			'parameter0_toggle',
+			'parameter0_up',
+			'parameter0_up_small',
+			'parameter0_link_inverse',
+			'parameter0_link_type',
+		]);
+	});
 });
