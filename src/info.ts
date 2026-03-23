@@ -79,7 +79,11 @@ export class TypeInfoFactory {
 			return null;
 		}
 
-		const unionMemberNodes = this.collectUnionMemberNodes(context.typeNode);
+		const unionMemberNodes = this.collectUnionMemberNodes(
+			context.typeNode,
+			undefined,
+			context.typeArgMap
+		);
 		const templateEntries = this.filterRegexMembers(
 			unionMemberNodes,
 			context.contextualType
@@ -189,10 +193,35 @@ export class TypeInfoFactory {
 		const contextualType = this.checker.getContextualType(node);
 		if (!contextualType) return null;
 
-		const typeNode = this.resolveTypeNode(node, contextualType);
+		const parameterContext = this.getParameterTypeContext(node);
+		const typeNode =
+			parameterContext?.typeNode ?? this.resolveTypeNode(node, contextualType);
 		if (!typeNode) return null;
 
-		return { node, contextualType, typeNode };
+		return {
+			node,
+			contextualType,
+			typeNode,
+			typeArgMap: parameterContext?.typeArgMap,
+		};
+	}
+
+	private getParameterTypeContext(node: TS.Expression) {
+		const callLike = this.findCallLikeExpression(node);
+		if (!callLike) return null;
+
+		const signature = this.checker.getResolvedSignature(callLike);
+		const argIndex = callLike.arguments?.indexOf(node as any) ?? -1;
+		if (argIndex < 0) return null;
+
+		const paramSymbol = signature?.getParameters()[argIndex];
+		const paramDecl = paramSymbol?.getDeclarations()?.[0];
+		if (!paramDecl || !this.ts.isParameter(paramDecl) || !paramDecl.type) return null;
+
+		return {
+			typeNode: paramDecl.type,
+			typeArgMap: this.buildCallTypeParameterMap(node, paramDecl),
+		};
 	}
 
 	private resolveTypeNode(
@@ -360,7 +389,8 @@ export class TypeInfoFactory {
 
 			const explicitArg = callLike.typeArguments?.[i];
 			if (explicitArg) {
-				map.set(symbol, explicitArg);
+				const normalizedArg = this.normalizeTypeArgument(typeParam, explicitArg);
+				if (normalizedArg) map.set(symbol, normalizedArg);
 				continue;
 			}
 
@@ -369,7 +399,8 @@ export class TypeInfoFactory {
 				signatureDecl,
 				symbol
 			);
-			if (inferredArg) map.set(symbol, inferredArg);
+			const normalizedArg = this.normalizeTypeArgument(typeParam, inferredArg);
+			if (normalizedArg) map.set(symbol, normalizedArg);
 		}
 
 		return map.size > 0 ? map : undefined;
@@ -395,6 +426,20 @@ export class TypeInfoFactory {
 		}
 
 		return undefined;
+	}
+
+	private normalizeTypeArgument(
+		typeParam: TS.TypeParameterDeclaration,
+		typeArg: TS.TypeNode | undefined
+	): TS.TypeNode | undefined {
+		if (!typeArg) return typeParam.constraint;
+		if (!typeParam.constraint) return typeArg;
+
+		const typeArgType = this.checker.getTypeAtLocation(typeArg);
+		const constraintType = this.checker.getTypeAtLocation(typeParam.constraint);
+		return this.checker.isTypeAssignableTo(typeArgType, constraintType)
+			? typeArg
+			: typeParam.constraint;
 	}
 
 	private getTypeReferenceSymbol(typeNode: TS.TypeNode): TS.Symbol | null {
@@ -739,8 +784,6 @@ export class TypeInfoFactory {
 		typeArgMap?: Map<TS.Symbol, TS.TypeNode>
 	): CalledNode[] {
 		return [
-			...this.collectUnionMemberNodes(node.checkType, node, typeArgMap),
-			...this.collectUnionMemberNodes(node.extendsType, node, typeArgMap),
 			...this.collectUnionMemberNodes(node.trueType, node, typeArgMap),
 			...this.collectUnionMemberNodes(node.falseType, node, typeArgMap),
 		];
