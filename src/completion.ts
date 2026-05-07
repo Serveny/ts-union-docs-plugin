@@ -1,11 +1,10 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
 import {
 	CompletionContextInfo,
-	getDeprecatedTag,
-	getTagText,
 	isRegexNode,
 	UnionInfo,
 } from './info';
+import { getDeprecatedTag, getTagText } from './utils';
 
 export function applyCompletionInfo(
 	ts: typeof TS,

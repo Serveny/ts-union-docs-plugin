@@ -54,3 +54,15 @@ function logPrettyColorWithSuffix(color: PrettyColorWithSuffix) {
 logPrettyColorWithSuffix('Pretty-red-suffix');
 
 const prettyColorWithSuffix: PrettyColorWithSuffix = 'Pretty-red-suffix';
+
+// ===================
+// Test 5
+// ===================
+
+type PrettyStringColor = `Pretty-${string}-${Color}`;
+
+function logPrettyStringColor(color: PrettyStringColor) {
+	console.log(color);
+}
+
+logPrettyStringColor('Pretty-custom-red');

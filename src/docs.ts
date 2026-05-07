@@ -1,5 +1,6 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
-import { getTagText, SupportedType, UnionInfo } from './info';
+import { SupportedType, UnionInfo } from './info';
+import { dedupeTagInfos, getTagText, isMarkdownTableLine } from './utils';
 
 type IndexedTag = {
 	tag: TS.JSDocTagInfo;
@@ -183,13 +184,13 @@ function addParamTagDescription(
 	newTag.text = [
 		createTextDisplayPart(paramName),
 		createTextDisplayPart('\n'),
-		createMarkdownDisplayPart(docText),
+		createMarkdownDisplayPart(ensureMultilineParamDoc(docText)),
 	];
 	return newTag;
 }
 
 function getParamTagName(tag: TS.JSDocTagInfo): string {
-	const text = getTagText(tag)?.trim();
+	const text = getTagText(tag).trim();
 	if (text) return text;
 
 	const parameterName = tag.text?.find((part) => part.kind === 'parameterName')?.text;
@@ -220,6 +221,10 @@ function formatQuotedParamDocComment(
 	return parts.join('\n');
 }
 
+function ensureMultilineParamDoc(text: string): string {
+	return /\r\n|\n/.test(text) ? text : `${text}\n`;
+}
+
 function formatQuotedParamTag(tag: TS.JSDocTagInfo): string[] {
 	const text = getTagText(tag);
 	if (!text) return [`> _@${tag.name}_`];
@@ -238,10 +243,6 @@ function createTextDisplayPart(text: string): TS.SymbolDisplayPart {
 		text,
 		kind: 'text',
 	} as TS.SymbolDisplayPart;
-}
-
-function isMarkdownTableLine(line: string): boolean {
-	return /^\|.*\|$/.test(line);
 }
 
 function quoteLines(lines: readonly string[]): string[] {
@@ -268,18 +269,4 @@ function cloneTag(tag: TS.JSDocTagInfo): TS.JSDocTagInfo {
 		name: tag.name,
 		text: tag.text?.map((part) => ({ ...part })),
 	};
-}
-
-function dedupeTagInfos(tags: readonly TS.JSDocTagInfo[]): TS.JSDocTagInfo[] {
-	const seen = new Set<string>();
-	const unique: TS.JSDocTagInfo[] = [];
-
-	for (const tag of tags) {
-		const key = `${tag.name}:${getTagText(tag)}`;
-		if (seen.has(key)) continue;
-		seen.add(key);
-		unique.push(tag);
-	}
-
-	return unique;
 }

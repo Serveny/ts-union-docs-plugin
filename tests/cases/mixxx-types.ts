@@ -74,6 +74,25 @@ const clearBtn = new Button(
 	'clear'
 );
 const noneBtn = new Button('', '', '');
+
+class EncoderX {
+	isShifted = 1;
+	isRight = 0;
+	test() {
+		setValue(
+			'[Playlist]',
+			this.isShifted
+				? this.isRight
+					? 'SelectNextPlaylist'
+					: 'SelectPrevPlaylist'
+				: this.isRight
+					? 'SelectNextTrack'
+					: 'SelectPrevTrack',
+			1
+		);
+	}
+}
+
 /*
  * ===================================================
  * Mixxx control types

@@ -1,4 +1,5 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
+export { getDeprecatedTag, getTagText } from './utils';
 export declare enum SupportedType {
     Parameter = 0,
     Variable = 1
@@ -102,6 +103,4 @@ export declare class TypeInfoFactory {
     private getConstInitializer;
     private getCompletionEntryName;
 }
-export declare function getDeprecatedTag(tags: readonly TS.JSDocTagInfo[] | undefined): TS.JSDocTagInfo | undefined;
-export declare function getTagText(tag: TS.JSDocTagInfo | undefined): string;
 export declare function isRegexNode(node: CalledNode): node is TS.StringLiteral & CalledNode;

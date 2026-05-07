@@ -18,6 +18,9 @@ describe('Union Type Param Docs Tests', () => {
 		const result = proxy.getQuickInfoAtPosition(absolutePath, cursorPos);
 		expect(result).toBeDefined();
 		expect(tagText(result?.tags, 'param')).toContain('color\n> Primary color');
+		expect(renderParamTagLikeVsCode(result?.tags, 'color')).not.toContain(
+			' — '
+		);
 	});
 
 	it('should find second js doc comment of union type with regex symbols inside string', () => {
@@ -59,3 +62,26 @@ describe('Union Type Param Docs Tests', () => {
 		);
 	});
 });
+
+function renderParamTagLikeVsCode(
+	tags:
+		| readonly { name: string; text?: readonly { text: string }[] }[]
+		| undefined,
+	paramName: string
+): string {
+	const tag = tags
+		?.filter((entry) => entry.name === 'param')
+		.find((entry) =>
+			entry.text
+				?.map((part) => part.text)
+				.join('')
+				.startsWith(paramName)
+		);
+	const text = tag?.text?.map((part) => part.text).join('') ?? '';
+	const body = text.split(/^(\S+)\s*-?\s*/);
+	if (body.length !== 3) return text;
+
+	const [, param, doc] = body;
+	const label = `*@param* \`${param}\``;
+	return label + (/\r\n|\n/.test(doc) ? `  \n${doc}` : ` — ${doc}`);
+}

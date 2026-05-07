@@ -1,4 +1,11 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
+import {
+	dedupeTagInfos,
+	getDeprecatedTag,
+	isMarkdownTableLine,
+} from './utils';
+
+export { getDeprecatedTag, getTagText } from './utils';
 
 // The supported start points for union documentation and completions
 export enum SupportedType {
@@ -124,8 +131,8 @@ export class TypeInfoFactory {
 	}
 
 	getDeprecatedUsageInfos(fileName: string): DeprecatedUsageInfo[] {
-		const cached = this.deprecatedUsageCache.get(fileName);
-		if (cached) return cached;
+		if (this.deprecatedUsageCache.has(fileName))
+			return this.deprecatedUsageCache.get(fileName)!;
 
 		const sourceFile = this.getSourceFile(fileName);
 		if (!sourceFile) return [];
@@ -219,7 +226,8 @@ export class TypeInfoFactory {
 
 		const paramSymbol = signature?.getParameters()[argIndex];
 		const paramDecl = paramSymbol?.getDeclarations()?.[0];
-		if (!paramDecl || !this.ts.isParameter(paramDecl) || !paramDecl.type) return null;
+		if (!paramDecl || !this.ts.isParameter(paramDecl) || !paramDecl.type)
+			return null;
 
 		const typeArgMap = this.buildCallTypeParameterMap(node, paramDecl);
 		const resolvedTypeNode =
@@ -227,7 +235,8 @@ export class TypeInfoFactory {
 		const completionTypeNode =
 			this.isDirectTypeParameterReference(paramDecl.type) &&
 			this.ts.isLiteralTypeNode(resolvedTypeNode)
-				? this.getTypeParameterConstraintNode(paramDecl.type) ?? paramDecl.type
+				? (this.getTypeParameterConstraintNode(paramDecl.type) ??
+					paramDecl.type)
 				: paramDecl.type;
 
 		return {
@@ -240,11 +249,13 @@ export class TypeInfoFactory {
 		};
 	}
 
-	private getTypeParameterConstraintNode(typeNode: TS.TypeNode): TS.TypeNode | null {
+	private getTypeParameterConstraintNode(
+		typeNode: TS.TypeNode
+	): TS.TypeNode | null {
 		const symbol = this.getTypeReferenceSymbol(typeNode);
 		const decl = symbol?.declarations?.[0];
 		return decl && this.ts.isTypeParameterDeclaration(decl)
-			? decl.constraint ?? null
+			? (decl.constraint ?? null)
 			: null;
 	}
 
@@ -424,7 +435,10 @@ export class TypeInfoFactory {
 
 			const explicitArg = callLike.typeArguments?.[i];
 			if (explicitArg) {
-				const normalizedArg = this.normalizeTypeArgument(typeParam, explicitArg);
+				const normalizedArg = this.normalizeTypeArgument(
+					typeParam,
+					explicitArg
+				);
 				if (normalizedArg) map.set(symbol, normalizedArg);
 				continue;
 			}
@@ -448,7 +462,9 @@ export class TypeInfoFactory {
 		if (!isClassLikeTypeParameterOwner(this.ts, enclosingDecl)) return;
 
 		const instanceType = this.checker.getTypeAtLocation(callLike);
-		const typeArgs = this.checker.getTypeArguments(instanceType as TS.TypeReference);
+		const typeArgs = this.checker.getTypeArguments(
+			instanceType as TS.TypeReference
+		);
 		const typeParams = enclosingDecl.typeParameters ?? [];
 		if (typeArgs.length === 0 || typeParams.length === 0) return;
 
@@ -516,11 +532,11 @@ export class TypeInfoFactory {
 
 	private isDirectTypeParameterReference(typeNode: TS.TypeNode): boolean {
 		const symbol = this.getTypeReferenceSymbol(typeNode);
-		return symbol?.declarations?.some((decl) =>
-			this.ts.isTypeParameterDeclaration(decl)
-		)
-			? true
-			: false;
+		return (
+			symbol?.declarations?.some((decl) =>
+				this.ts.isTypeParameterDeclaration(decl)
+			) === true
+		);
 	}
 
 	private createTypeNodeFromExpression(
@@ -660,7 +676,7 @@ export class TypeInfoFactory {
 		}
 
 		const docComment = comments.reverse().flat();
-		const uniqueTags = dedupeTags(tags.reverse().flat());
+		const uniqueTags = dedupeTagInfos(tags.reverse().flat());
 
 		return {
 			docComment: docComment.length > 0 ? docComment : undefined,
@@ -725,8 +741,6 @@ export class TypeInfoFactory {
 	private getCallExpression(
 		node: TS.Node
 	): TS.CallExpression | TS.NewExpression | null {
-		if (this.ts.isCallExpression(node) || this.ts.isNewExpression(node))
-			return node;
 		while (
 			node &&
 			!this.ts.isCallExpression(node) &&
@@ -855,7 +869,8 @@ export class TypeInfoFactory {
 		typeArgMap?: Map<TS.Symbol, TS.TypeNode>
 	): CalledNode[] {
 		const resolvedObjectType =
-			this.resolveMappedTypeNode(node.objectType, typeArgMap) ?? node.objectType;
+			this.resolveMappedTypeNode(node.objectType, typeArgMap) ??
+			node.objectType;
 		const indexValues = this.collectLiteralValues(node.indexType, typeArgMap);
 		if (indexValues.size > 0) {
 			const objectType = this.checker.getTypeAtLocation(resolvedObjectType);
@@ -891,7 +906,7 @@ export class TypeInfoFactory {
 		node: TS.MappedTypeNode,
 		typeArgMap?: Map<TS.Symbol, TS.TypeNode>
 	): CalledNode[] {
-		const results: TS.Node[] = [];
+		const results: CalledNode[] = [];
 		if (node.typeParameter.constraint)
 			results.push(
 				...this.collectUnionMemberNodes(
@@ -920,7 +935,11 @@ export class TypeInfoFactory {
 		typeArgMap?: Map<TS.Symbol, TS.TypeNode>
 	): Set<string> {
 		const values = new Set<string>();
-		for (const member of this.collectUnionMemberNodes(node, undefined, typeArgMap)) {
+		for (const member of this.collectUnionMemberNodes(
+			node,
+			undefined,
+			typeArgMap
+		)) {
 			const value = getTypeNodeValueText(this.ts, member);
 			if (value != null) values.add(value);
 		}
@@ -993,7 +1012,8 @@ export class TypeInfoFactory {
 	): CalledNode[] {
 		const ts = this.ts,
 			checker = this.checker,
-			targetTypeNode = this.resolveMappedTypeNode(node.type, typeArgMap) ?? node.type,
+			targetTypeNode =
+				this.resolveMappedTypeNode(node.type, typeArgMap) ?? node.type,
 			type = checker.getTypeAtLocation(targetTypeNode);
 		return type.getProperties().map((prop) => {
 			const decl = prop.getDeclarations()?.[0];
@@ -1112,7 +1132,7 @@ export class TypeInfoFactory {
 					spanNodes.push(
 						this.createLiteralNode(
 							typeNode,
-							'\\.\\*' + span.literal.text,
+							'.*' + span.literal.text,
 							node,
 							true
 						)
@@ -1172,7 +1192,8 @@ export class TypeInfoFactory {
 			const pattern = new RegExp(`^${node.text}$`);
 			return pattern.test(resolvedExpr.text);
 		}
-		if (node.isRegexPattern === false) return this.cmpLit(resolvedExpr, node as any);
+		if (node.isRegexPattern === false)
+			return this.cmpLit(resolvedExpr, node as any);
 		if (!this.ts.isLiteralTypeNode(node)) return false;
 		return this.cmpLit(resolvedExpr, node.literal);
 	}
@@ -1296,8 +1317,7 @@ export class TypeInfoFactory {
 			}
 
 			if (this.ts.isPropertyDeclaration(decl)) {
-				if (!hasModifier(this.ts, decl, this.ts.SyntaxKind.ReadonlyKeyword))
-					continue;
+				if (!hasModifier(decl, this.ts.SyntaxKind.ReadonlyKeyword)) continue;
 				if (decl.initializer) return decl.initializer;
 			}
 		}
@@ -1415,7 +1435,9 @@ function extractJSDocTags(normalizedLines: string[]): TS.JSDocTagInfo[] {
 			i = j;
 		}
 
-		const normalizedTagLines = trimEmptyLines(tagLines).map((part) => part.trim());
+		const normalizedTagLines = trimEmptyLines(tagLines).map((part) =>
+			part.trim()
+		);
 		const text = shouldPreserveTagLineBreaks(normalizedTagLines)
 			? normalizedTagLines.join('\n').trim()
 			: normalizedTagLines.join(' ').trim();
@@ -1444,24 +1466,6 @@ function trimEmptyLines(lines: string[]): string[] {
 
 function shouldPreserveTagLineBreaks(lines: readonly string[]): boolean {
 	return lines.some(isMarkdownTableLine);
-}
-
-function isMarkdownTableLine(line: string): boolean {
-	return /^\|.*\|$/.test(line);
-}
-
-function dedupeTags(tags: readonly TS.JSDocTagInfo[]): TS.JSDocTagInfo[] {
-	const seen = new Set<string>();
-	const unique: TS.JSDocTagInfo[] = [];
-
-	for (const tag of tags) {
-		const key = `${tag.name}:${getTagText(tag)}`;
-		if (seen.has(key)) continue;
-		seen.add(key);
-		unique.push(tag);
-	}
-
-	return unique;
 }
 
 function isDeprecatedUsageNode(
@@ -1545,7 +1549,6 @@ function isConstVariableDeclaration(
 }
 
 function hasModifier(
-	_ts: typeof TS,
 	node: TS.Node & { modifiers?: TS.NodeArray<TS.ModifierLike> },
 	kind: TS.SyntaxKind
 ): boolean {
@@ -1581,16 +1584,6 @@ function isClassLikeTypeParameterOwner(
 		ts.isClassExpression(node) ||
 		ts.isInterfaceDeclaration(node)
 	);
-}
-
-export function getDeprecatedTag(
-	tags: readonly TS.JSDocTagInfo[] | undefined
-): TS.JSDocTagInfo | undefined {
-	return tags?.find((tag) => tag.name === 'deprecated');
-}
-
-export function getTagText(tag: TS.JSDocTagInfo | undefined): string {
-	return tag?.text?.map((part) => part.text).join('') ?? '';
 }
 
 export function isRegexNode(

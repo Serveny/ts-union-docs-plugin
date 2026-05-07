@@ -1,3 +1,25 @@
+//#region src/utils.ts
+function getTagText(tag) {
+	return tag?.text?.map((part) => part.text).join("") ?? "";
+}
+function getDeprecatedTag(tags) {
+	return tags?.find((tag) => tag.name === "deprecated");
+}
+function isMarkdownTableLine(line) {
+	return /^\|.*\|$/.test(line);
+}
+function dedupeTagInfos(tags) {
+	const seen = /* @__PURE__ */ new Set();
+	const unique = [];
+	for (const tag of tags) {
+		const key = `${tag.name}:${getTagText(tag)}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		unique.push(tag);
+	}
+	return unique;
+}
+//#endregion
 //#region src/info.ts
 var SupportedType = /* @__PURE__ */ function(SupportedType) {
 	SupportedType[SupportedType["Parameter"] = 0] = "Parameter";
@@ -56,8 +78,7 @@ var TypeInfoFactory = class {
 		return this.getCompletionInfo(fileName, position)?.entryInfos.find((info) => info.name === entryName) ?? null;
 	}
 	getDeprecatedUsageInfos(fileName) {
-		const cached = this.deprecatedUsageCache.get(fileName);
-		if (cached) return cached;
+		if (this.deprecatedUsageCache.has(fileName)) return this.deprecatedUsageCache.get(fileName);
 		const sourceFile = this.getSourceFile(fileName);
 		if (!sourceFile) return [];
 		const usages = [];
@@ -277,7 +298,7 @@ var TypeInfoFactory = class {
 		return symbol.flags & this.ts.SymbolFlags.Alias ? this.checker.getAliasedSymbol(symbol) : symbol;
 	}
 	isDirectTypeParameterReference(typeNode) {
-		return this.getTypeReferenceSymbol(typeNode)?.declarations?.some((decl) => this.ts.isTypeParameterDeclaration(decl)) ? true : false;
+		return this.getTypeReferenceSymbol(typeNode)?.declarations?.some((decl) => this.ts.isTypeParameterDeclaration(decl)) === true;
 	}
 	createTypeNodeFromExpression(expr) {
 		const resolvedExpr = this.resolveExpression(expr);
@@ -334,7 +355,7 @@ var TypeInfoFactory = class {
 			}
 		}
 		const docComment = comments.reverse().flat();
-		const uniqueTags = dedupeTags(tags.reverse().flat());
+		const uniqueTags = dedupeTagInfos(tags.reverse().flat());
 		return {
 			docComment: docComment.length > 0 ? docComment : void 0,
 			tags: uniqueTags.length > 0 ? uniqueTags : void 0
@@ -376,7 +397,6 @@ var TypeInfoFactory = class {
 		return find(srcFile);
 	}
 	getCallExpression(node) {
-		if (this.ts.isCallExpression(node) || this.ts.isNewExpression(node)) return node;
 		while (node && !this.ts.isCallExpression(node) && !this.ts.isNewExpression(node)) node = node.parent;
 		return node;
 	}
@@ -512,7 +532,7 @@ var TypeInfoFactory = class {
 			} else if (ts.isLiteralTypeNode(typeNode) && (this.ts.isStringLiteral(typeNode.literal) || this.ts.isNumericLiteral(typeNode.literal))) spanNodes.push(this.createLiteralNode(typeNode, typeNode.literal.text + span.literal.text, node, false));
 			else if (typeNode.kind === ts.SyntaxKind.NumberKeyword) spanNodes.push(this.createLiteralNode(typeNode, "\\d+(\\.\\d+)?" + span.literal.text, node, true));
 			else if (typeNode.kind === ts.SyntaxKind.BooleanKeyword) spanNodes.push(this.createLiteralNode(typeNode, "(true|false)" + span.literal.text, node, true));
-			else if (typeNode.kind === ts.SyntaxKind.StringKeyword) spanNodes.push(this.createLiteralNode(typeNode, "\\.\\*" + span.literal.text, node, true));
+			else if (typeNode.kind === ts.SyntaxKind.StringKeyword) spanNodes.push(this.createLiteralNode(typeNode, ".*" + span.literal.text, node, true));
 			else console.warn("Unknown type of template: ", typeNode);
 			nodes.push(spanNodes);
 		}
@@ -603,7 +623,7 @@ var TypeInfoFactory = class {
 				if (decl.initializer) return decl.initializer;
 			}
 			if (this.ts.isPropertyDeclaration(decl)) {
-				if (!hasModifier(this.ts, decl, this.ts.SyntaxKind.ReadonlyKeyword)) continue;
+				if (!hasModifier(decl, this.ts.SyntaxKind.ReadonlyKeyword)) continue;
 				if (decl.initializer) return decl.initializer;
 			}
 		}
@@ -709,21 +729,7 @@ function trimEmptyLines(lines) {
 	return lines.slice(start, end);
 }
 function shouldPreserveTagLineBreaks(lines) {
-	return lines.some(isMarkdownTableLine$1);
-}
-function isMarkdownTableLine$1(line) {
-	return /^\|.*\|$/.test(line);
-}
-function dedupeTags(tags) {
-	const seen = /* @__PURE__ */ new Set();
-	const unique = [];
-	for (const tag of tags) {
-		const key = `${tag.name}:${getTagText(tag)}`;
-		if (seen.has(key)) continue;
-		seen.add(key);
-		unique.push(tag);
-	}
-	return unique;
+	return lines.some(isMarkdownTableLine);
 }
 function isDeprecatedUsageNode(ts, node) {
 	return ts.isStringLiteral(node) || ts.isNumericLiteral(node) || ts.isBigIntLiteral(node) || node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword || node.kind === ts.SyntaxKind.NullKeyword;
@@ -763,7 +769,7 @@ function isStringLikeExpression(ts, expr) {
 function isConstVariableDeclaration(ts, decl) {
 	return ts.isVariableDeclarationList(decl.parent) && (decl.parent.flags & ts.NodeFlags.Const) !== 0;
 }
-function hasModifier(_ts, node, kind) {
+function hasModifier(node, kind) {
 	return node.modifiers?.some((modifier) => modifier.kind === kind) ?? false;
 }
 function isSignatureDeclaration(ts, node) {
@@ -771,12 +777,6 @@ function isSignatureDeclaration(ts, node) {
 }
 function isClassLikeTypeParameterOwner(ts, node) {
 	return ts.isClassDeclaration(node) || ts.isClassExpression(node) || ts.isInterfaceDeclaration(node);
-}
-function getDeprecatedTag(tags) {
-	return tags?.find((tag) => tag.name === "deprecated");
-}
-function getTagText(tag) {
-	return tag?.text?.map((part) => part.text).join("") ?? "";
 }
 function isRegexNode(node) {
 	return node.isRegexPattern === true;
@@ -1000,12 +1000,12 @@ function addParamTagDescription(oldTag, docComment, extraTags) {
 	newTag.text = [
 		createTextDisplayPart(getParamTagName(oldTag)),
 		createTextDisplayPart("\n"),
-		createMarkdownDisplayPart(docText)
+		createMarkdownDisplayPart(ensureMultilineParamDoc(docText))
 	];
 	return newTag;
 }
 function getParamTagName(tag) {
-	const text = getTagText(tag)?.trim();
+	const text = getTagText(tag).trim();
 	if (text) return text;
 	const parameterName = tag.text?.find((part) => part.kind === "parameterName")?.text;
 	if (parameterName) return parameterName;
@@ -1026,6 +1026,9 @@ function formatQuotedParamDocComment(lines, extraTags) {
 	}
 	return parts.join("\n");
 }
+function ensureMultilineParamDoc(text) {
+	return /\r\n|\n/.test(text) ? text : `${text}\n`;
+}
 function formatQuotedParamTag(tag) {
 	const text = getTagText(tag);
 	if (!text) return [`> _@${tag.name}_`];
@@ -1044,9 +1047,6 @@ function createTextDisplayPart(text) {
 		kind: "text"
 	};
 }
-function isMarkdownTableLine(line) {
-	return /^\|.*\|$/.test(line);
-}
 function quoteLines(lines) {
 	return lines.map((line, index) => {
 		return `> ${line}${index < lines.length - 1 && line.trim() !== "" && lines[index + 1].trim() !== "" && !isMarkdownTableLine(line) && !isMarkdownTableLine(lines[index + 1]) ? "  " : ""}`;
@@ -1060,17 +1060,6 @@ function cloneTag(tag) {
 		name: tag.name,
 		text: tag.text?.map((part) => ({ ...part }))
 	};
-}
-function dedupeTagInfos(tags) {
-	const seen = /* @__PURE__ */ new Set();
-	const unique = [];
-	for (const tag of tags) {
-		const key = `${tag.name}:${getTagText(tag)}`;
-		if (seen.has(key)) continue;
-		seen.add(key);
-		unique.push(tag);
-	}
-	return unique;
 }
 //#endregion
 //#region src/plugin.ts

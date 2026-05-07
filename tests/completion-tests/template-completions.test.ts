@@ -90,3 +90,19 @@ describe('Completion template type test 4', () => {
 		]);
 	});
 });
+
+describe('Completion template type test 5', () => {
+	it('should suggest string template span completions for function parameter', () => {
+		const cursorPos =
+			code.indexOf(`logPrettyStringColor('Pretty-custom-red');`) + 28;
+		const result = proxy.getCompletionsAtPosition(absolutePath, cursorPos, {});
+		expect(result).toBeDefined();
+		expect(completionSnippetNames(result!)).toStrictEqual([
+			'Pretty-TEXT-red',
+			'Pretty-TEXT-red-dark',
+			'Pretty-TEXT-red-bright',
+			'Pretty-TEXT-red-regex/[.*+?^${}()|[]-]/g',
+			'Pretty-TEXT-red-0',
+		]);
+	});
+});
