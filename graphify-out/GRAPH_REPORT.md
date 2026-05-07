@@ -1,54 +1,64 @@
-# Graph Report - .  (2026-05-07)
+# Graph Report - ts-union-docs-plugin  (2026-05-07)
 
 ## Corpus Check
-- 37 files · ~52,845 words
+- 34 files · ~70,988 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 331 nodes · 523 edges · 15 communities detected
-- Extraction: 89% EXTRACTED · 11% INFERRED · 0% AMBIGUOUS · INFERRED: 58 edges (avg confidence: 0.81)
+- 225 nodes · 365 edges · 25 communities detected
+- Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 24 edges (avg confidence: 0.82)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_Type Info Factory|Type Info Factory]]
-- [[_COMMUNITY_Completion Semantics|Completion Semantics]]
-- [[_COMMUNITY_Doc Parsing Helpers|Doc Parsing Helpers]]
-- [[_COMMUNITY_Quick Info Rendering|Quick Info Rendering]]
-- [[_COMMUNITY_Release Diagnostics|Release Diagnostics]]
-- [[_COMMUNITY_README Usage Docs|README Usage Docs]]
-- [[_COMMUNITY_Version Script|Version Script]]
-- [[_COMMUNITY_Completion Pipeline|Completion Pipeline]]
-- [[_COMMUNITY_Language Service Proxy|Language Service Proxy]]
-- [[_COMMUNITY_Hover Demo Image|Hover Demo Image]]
-- [[_COMMUNITY_Mixxx Type Stubs|Mixxx Type Stubs]]
-- [[_COMMUNITY_Completion Demo Image|Completion Demo Image]]
-- [[_COMMUNITY_Union Property Cases|Union Property Cases]]
-- [[_COMMUNITY_Build Configuration|Build Configuration]]
-- [[_COMMUNITY_Vitest Discovery|Vitest Discovery]]
+- [[_COMMUNITY_Community 0|Community 0]]
+- [[_COMMUNITY_Community 1|Community 1]]
+- [[_COMMUNITY_Community 2|Community 2]]
+- [[_COMMUNITY_Community 3|Community 3]]
+- [[_COMMUNITY_Community 4|Community 4]]
+- [[_COMMUNITY_Community 5|Community 5]]
+- [[_COMMUNITY_Community 6|Community 6]]
+- [[_COMMUNITY_Community 7|Community 7]]
+- [[_COMMUNITY_Community 8|Community 8]]
+- [[_COMMUNITY_Community 10|Community 10]]
+- [[_COMMUNITY_Community 11|Community 11]]
+- [[_COMMUNITY_Community 12|Community 12]]
+- [[_COMMUNITY_Community 13|Community 13]]
+- [[_COMMUNITY_Community 14|Community 14]]
+- [[_COMMUNITY_Community 16|Community 16]]
+- [[_COMMUNITY_Community 17|Community 17]]
+- [[_COMMUNITY_Community 18|Community 18]]
+- [[_COMMUNITY_Community 19|Community 19]]
+- [[_COMMUNITY_Community 20|Community 20]]
+- [[_COMMUNITY_Community 21|Community 21]]
+- [[_COMMUNITY_Community 22|Community 22]]
+- [[_COMMUNITY_Community 23|Community 23]]
+- [[_COMMUNITY_Community 25|Community 25]]
+- [[_COMMUNITY_Community 26|Community 26]]
+- [[_COMMUNITY_Community 27|Community 27]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `TypeInfoFactory` - 63 edges
-2. `main()` - 10 edges
-3. `TypeInfoFactory` - 9 edges
-4. `UnionInfo Metadata Model` - 9 edges
-5. `TypeScript Union Docs Plugin` - 8 edges
-6. `addParamTagDescription()` - 7 edges
-7. `Deprecated Usage Diagnostics` - 7 edges
-8. `createDeprecatedDiagnostics()` - 6 edges
-9. `buildParamTags()` - 6 edges
-10. `getTagText()` - 6 edges
+2. `addParamTagDescription()` - 8 edges
+3. `TypeScript Union Docs Plugin` - 8 edges
+4. `buildParamTags()` - 6 edges
+5. `createTemplateCompletions()` - 5 edges
+6. `createDeprecatedDiagnostics()` - 5 edges
+7. `addExtraParamTagInfo()` - 5 edges
+8. `addExtraDocumentation()` - 5 edges
+9. `formatQuotedParamTag()` - 5 edges
+10. `prepareJSDocMetadata()` - 5 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Union Type Variable Member Docs` --implements--> `Resolve Union Member JSDoc Into Tooltip`  [INFERRED]
   tests/quick-info-tests/union-type-var.test.ts → README.md
 - `Union Type Property Member Docs` --implements--> `Resolve Union Member JSDoc Into Tooltip`  [INFERRED]
   tests/quick-info-tests/union-type-prop.test.ts → README.md
-- `0.2.0 Constructor Union Parameter Support` --conceptually_related_to--> `Constructor Union Type Parameter Docs`  [INFERRED]
-  CHANGELOG.md → tests/quick-info-tests/constructor-union-type-param.test.ts
-- `Non-Param Tag Preservation Case` --semantically_similar_to--> `Completion Details Deprecation Tags`  [INFERRED] [semantically similar]
-  tests/cases/union-type-param-non-param-tags.ts → src/completion.ts
-- `Union Type Function Parameter Member Docs` --implements--> `Resolve Union Member JSDoc Into Tooltip`  [INFERRED]
-  tests/quick-info-tests/union-type-param.test.ts → README.md
+- `Deprecated Union Member Completion Flags` --conceptually_related_to--> `0.3.0 Deprecated Union Member Support`  [INFERRED]
+  tests/completion-tests/deprecated-union-members.test.ts → CHANGELOG.md
+- `Constructor Union Type Parameter Docs` --implements--> `Resolve Union Member JSDoc Into Tooltip`  [INFERRED]
+  tests/quick-info-tests/constructor-union-type-param.test.ts → README.md
+- `Constructor Union Type Parameter Docs` --conceptually_related_to--> `0.2.0 Constructor Union Parameter Support`  [INFERRED]
+  tests/quick-info-tests/constructor-union-type-param.test.ts → CHANGELOG.md
 
 ## Hyperedges (group relationships)
 - **Language Service Extension Flow** — plugin_language_service_proxy, info_type_info_factory, docs_quick_info_enrichment, completion_completion_enrichment, diagnostics_deprecated_diagnostics [EXTRACTED 1.00]
@@ -64,90 +74,150 @@
 
 ## Communities
 
-### Community 0 - "Type Info Factory"
-Cohesion: 0.08
-Nodes (2): getNodeText(), TypeInfoFactory
+### Community 0 - "Community 0"
+Cohesion: 0.09
+Nodes (2): isClassLikeTypeParameterOwner(), TypeInfoFactory
 
-### Community 1 - "Completion Semantics"
-Cohesion: 0.07
-Nodes (45): Completion Info Enrichment, Deprecated Completion Entry Marking, Completion Details Deprecation Tags, Regex Pattern to Snippet Conversion, Template Completion Generation, Deprecated Union Members Case, Deprecated Usage Diagnostics, Fallback Quick Info (+37 more)
-
-### Community 2 - "Doc Parsing Helpers"
-Cohesion: 0.1
-Nodes (23): isVersionSubject(), calledNode(), cartesianProduct(), escapeRegExp(), extractDocComment(), extractJSDocMetadataFromNode(), extractJSDocTags(), getExpressionValueText() (+15 more)
-
-### Community 3 - "Quick Info Rendering"
+### Community 1 - "Community 1"
 Cohesion: 0.15
 Nodes (25): addExtraDocumentation(), addExtraParamTagInfo(), addExtraQuickInfo(), addExtraVariableQuickInfo(), addParamTagDescription(), appendUnionTags(), buildParamTags(), cloneTag() (+17 more)
 
-### Community 4 - "Release Diagnostics"
-Cohesion: 0.09
-Nodes (26): 0.1.0 Template Completion Support, 0.2.0 Constructor Union Parameter Support, 0.3.0 Deprecated Union Member Support, 0.3.2 Generic Completion and Constructor Fixes, Plugin Release History, Deprecated Union Member Completion Flags, Deprecated Union Member Completion Detail Metadata, No Duplicate Deprecated Suggestion Diagnostics (+18 more)
+### Community 2 - "Community 2"
+Cohesion: 0.11
+Nodes (18): calledNode(), cartesianProduct(), escapeRegExp(), extractDocComment(), extractJSDocMetadataFromNode(), extractJSDocTags(), getLeadingComment(), getNodeText() (+10 more)
 
-### Community 5 - "README Usage Docs"
-Cohesion: 0.12
-Nodes (19): Constructor Union Type Parameter Docs, Inline Union Parameter Produces No Extra Quick Info Docs, Mixxx Button Constructor Parameter Docs, Nested Union Type Parameter Docs, Debug Project Must Be Outside Plugin Folder Rationale, Language Service Plugin Configuration, Local Testing Workflow, Plugin Feature Set (+11 more)
+### Community 3 - "Community 3"
+Cohesion: 0.1
+Nodes (22): 0.2.0 Constructor Union Parameter Support, Constructor Union Type Parameter Docs, Mixxx Constructor Parameter Completion Snippets, Mixxx Dynamic Control Completion Snippets, Mixxx Dynamic Group Completion Snippets, Mixxx Button Constructor Parameter Docs, Mixxx Group-Specific Documentation Filtering, Mixxx Multiline Param Markdown Rendering (+14 more)
 
-### Community 6 - "Version Script"
-Cohesion: 0.23
-Nodes (17): assertJsonObject(), bumpVersion(), classifyCommit(), cleanCommitMessage(), findLastReleaseRef(), formatChangelogLine(), getCommitsSince(), insertChangelogSection() (+9 more)
+### Community 4 - "Community 4"
+Cohesion: 0.2
+Nodes (13): addDeprecatedCompletionEntryDetails(), addTemplateCompletions(), appendKindModifier(), applyCompletionInfo(), createTemplateCompletions(), getNodeTextSpan(), markDeprecatedEntries(), regexToSnippet() (+5 more)
 
-### Community 7 - "Completion Pipeline"
-Cohesion: 0.19
-Nodes (14): addDeprecatedCompletionEntryDetails(), addTemplateCompletions(), appendKindModifier(), applyCompletionInfo(), createTemplateCompletions(), getNodeTextSpan(), markDeprecatedEntries(), regexToSnippet() (+6 more)
+### Community 5 - "Community 5"
+Cohesion: 0.15
+Nodes (16): 0.1.0 Template Completion Support, 0.3.0 Deprecated Union Member Support, 0.3.2 Generic Completion and Constructor Fixes, Plugin Release History, Deprecated Union Member Completion Flags, Deprecated Union Member Completion Detail Metadata, No Duplicate Deprecated Suggestion Diagnostics, Deprecated Union Member Semantic Diagnostics (+8 more)
 
-### Community 8 - "Language Service Proxy"
-Cohesion: 0.14
-Nodes (5): createLanguageServiceProxy(), errToString(), logPluginError(), UnionTypeDocsPlugin, createProxyFromCase()
+### Community 6 - "Community 6"
+Cohesion: 0.24
+Nodes (3): getExpressionValueText(), isRegexNode(), isStringLikeExpression()
 
-### Community 9 - "Hover Demo Image"
+### Community 7 - "Community 7"
 Cohesion: 0.39
 Nodes (9): Blue Union Member, color1 Parameter, color2 Parameter, Color Swatch Icons, Color Type, Editor Hover Tooltip, logColors Function, Range Tag 1-900 (+1 more)
 
-### Community 10 - "Mixxx Type Stubs"
-Cohesion: 0.32
-Nodes (4): Button, EncoderX, getValue(), setValue()
-
-### Community 11 - "Completion Demo Image"
+### Community 8 - "Community 8"
 Cohesion: 0.29
 Nodes (8): Autocomplete Popup, Code Editor Screenshot, Color Completion Suggestions, JSDoc Union Member Comments, logColors Call, @range Tag, red-0 Numeric Suggestion, TypeScript Color Union
 
-### Community 15 - "Union Property Cases"
+### Community 10 - "Community 10"
 Cohesion: 0.4
-Nodes (2): ColorPalette, VariableColorPalette
+Nodes (5): Completion Entry Details Interception, Completion Interception, Plugin Error Logging, Quick Info Interception, Semantic Diagnostics Interception
 
-### Community 16 - "Build Configuration"
+### Community 11 - "Community 11"
+Cohesion: 0.67
+Nodes (4): TSServer Plugin Factory Export, Language Service Proxy, UnionTypeDocsPlugin, Test Language Service Proxy Factory
+
+### Community 12 - "Community 12"
+Cohesion: 0.5
+Nodes (4): Mixxx Control Lookup Demo, Mixxx Group to Control Mapping, Template-Based Mixxx Control Groups, Mixxx Generic Control Flow Case
+
+### Community 13 - "Community 13"
 Cohesion: 0.67
 Nodes (3): Declaration File Generation, Vite CommonJS Library Build, TypeScript Runtime Externalization
 
-### Community 37 - "Vitest Discovery"
+### Community 14 - "Community 14"
+Cohesion: 1.0
+Nodes (2): Nested Template Union Parameter Case, Union Type Parameter Color Case
+
+### Community 16 - "Community 16"
 Cohesion: 1.0
 Nodes (1): Vitest Test Discovery
 
+### Community 17 - "Community 17"
+Cohesion: 1.0
+Nodes (1): Color Union Documentation Demo
+
+### Community 18 - "Community 18"
+Cohesion: 1.0
+Nodes (1): QuickInfo and Diagnostic Text Helpers
+
+### Community 19 - "Community 19"
+Cohesion: 1.0
+Nodes (1): Inline Union Parameter Case
+
+### Community 20 - "Community 20"
+Cohesion: 1.0
+Nodes (1): Union Type Variable Case
+
+### Community 21 - "Community 21"
+Cohesion: 1.0
+Nodes (1): Union Type Property Case
+
+### Community 22 - "Community 22"
+Cohesion: 1.0
+Nodes (1): Deprecated Union Members Case
+
+### Community 23 - "Community 23"
+Cohesion: 1.0
+Nodes (1): Non-Param Tag Preservation Case
+
+### Community 25 - "Community 25"
+Cohesion: 1.0
+Nodes (1): Inline Union Parameter Produces No Extra Quick Info Docs
+
+### Community 26 - "Community 26"
+Cohesion: 1.0
+Nodes (1): Nested Union Type Parameter Docs
+
+### Community 27 - "Community 27"
+Cohesion: 1.0
+Nodes (1): Non-Param Tag Preservation During Param Injection
+
 ## Knowledge Gaps
-- **35 isolated node(s):** `TypeScript Runtime Externalization`, `Declaration File Generation`, `Vitest Test Discovery`, `TSServer Plugin Factory Export`, `Program-Scoped Cache Invalidation` (+30 more)
+- **47 isolated node(s):** `TypeScript Runtime Externalization`, `Declaration File Generation`, `Vitest Test Discovery`, `TSServer Plugin Factory Export`, `Quick Info Interception` (+42 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **Thin community `Type Info Factory`** (59 nodes): `getNodeText()`, `TypeInfoFactory`, `.addEnclosingTypeParameterMappings()`, `.addSignatureTypeParameterMappings()`, `.buildCallTypeParameterMap()`, `.buildTypeArgumentMap()`, `.clearCaches()`, `.collectConditionalTypeNode()`, `.collectDocMetadata()`, `.collectIndexedAccessTypeNode()`, `.collectKeyOfKeywordTypeOperatorNode()`, `.collectLiteralValues()`, `.collectMappedTypeNode()`, `.collectTupleTypeNode()`, `.collectTypeLiteralNode()`, `.collectTypeQueryNode()`, `.collectTypeReferenceNode()`, `.collectUnionMemberNodes()`, `.constructor()`, `.createCompletionEntryInfos()`, `.createTypeNodeFromExpression()`, `.createUnionInfo()`, `.filterRegexMembers()`, `.findCallLikeExpression()`, `.findNodeAtPos()`, `.getCallExpression()`, `.getCompletionContext()`, `.getCompletionEntryInfo()`, `.getCompletionEntryName()`, `.getCompletionInfo()`, `.getDeprecatedUsageInfos()`, `.getExpressionName()`, `.getIndexedAccessMembersForKey()`, `.getInitNode()`, `.getParameterTypeContext()`, `.getProgram()`, `.getReferencedSymbol()`, `.getSourceFile()`, `.getTypeInfo()`, `.getTypeInfoForExpression()`, `.getTypeInfoForNode()`, `.getTypeNodeFromAlias()`, `.getTypeNodeFromInitializer()`, `.getTypeNodeFromParameter()`, `.getTypeParameterConstraintNode()`, `.getTypeReferenceSymbol()`, `.getUnionExpressionInfo()`, `.getUnionInfo()`, `.getUnionInfoForArgument()`, `.getUnionParametersInfo()`, `.getUnionVariableInfo()`, `.getValue()`, `.inferTypeArgumentFromParameters()`, `.isDirectTypeParameterReference()`, `.normalizeTypeArgument()`, `.resolveExpression()`, `.resolveMappedTypeNode()`, `.resolveTypeNode()`, `.unwrapExpression()`
+- **Thin community `Community 0`** (50 nodes): `isClassLikeTypeParameterOwner()`, `TypeInfoFactory`, `.addEnclosingTypeParameterMappings()`, `.addSignatureTypeParameterMappings()`, `.buildCallTypeParameterMap()`, `.buildTypeArgumentMap()`, `.collectConditionalTypeNode()`, `.collectDocMetadata()`, `.collectIndexedAccessTypeNode()`, `.collectKeyOfKeywordTypeOperatorNode()`, `.collectLiteralValues()`, `.collectMappedTypeNode()`, `.collectTupleTypeNode()`, `.collectTypeLiteralNode()`, `.collectTypeQueryNode()`, `.collectTypeReferenceNode()`, `.collectUnionMemberNodes()`, `.constructor()`, `.createCompletionEntryInfos()`, `.createUnionInfo()`, `.filterRegexMembers()`, `.findCallLikeExpression()`, `.findNodeAtPos()`, `.getCallExpression()`, `.getCompletionContext()`, `.getCompletionEntryInfo()`, `.getCompletionEntryName()`, `.getCompletionInfo()`, `.getExpressionName()`, `.getIndexedAccessMembersForKey()`, `.getInitNode()`, `.getParameterTypeContext()`, `.getTypeInfo()`, `.getTypeInfoForExpression()`, `.getTypeInfoForNode()`, `.getTypeNodeFromAlias()`, `.getTypeNodeFromInitializer()`, `.getTypeNodeFromParameter()`, `.getTypeParameterConstraintNode()`, `.getTypeReferenceSymbol()`, `.getUnionExpressionInfo()`, `.getUnionInfo()`, `.getUnionInfoForArgument()`, `.getUnionParametersInfo()`, `.getUnionVariableInfo()`, `.getValue()`, `.isDirectTypeParameterReference()`, `.normalizeTypeArgument()`, `.resolveMappedTypeNode()`, `.resolveTypeNode()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Union Property Cases`** (5 nodes): `union-type-prop.ts`, `ColorPalette`, `.print()`, `VariableColorPalette`, `.constructor()`
+- **Thin community `Community 14`** (2 nodes): `Nested Template Union Parameter Case`, `Union Type Parameter Color Case`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Vitest Discovery`** (1 nodes): `Vitest Test Discovery`
+- **Thin community `Community 16`** (1 nodes): `Vitest Test Discovery`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 17`** (1 nodes): `Color Union Documentation Demo`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 18`** (1 nodes): `QuickInfo and Diagnostic Text Helpers`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 19`** (1 nodes): `Inline Union Parameter Case`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 20`** (1 nodes): `Union Type Variable Case`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 21`** (1 nodes): `Union Type Property Case`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 22`** (1 nodes): `Deprecated Union Members Case`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 23`** (1 nodes): `Non-Param Tag Preservation Case`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 25`** (1 nodes): `Inline Union Parameter Produces No Extra Quick Info Docs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 26`** (1 nodes): `Nested Union Type Parameter Docs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 27`** (1 nodes): `Non-Param Tag Preservation During Param Injection`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `TypeInfoFactory` connect `Type Info Factory` to `Doc Parsing Helpers`?**
-  _High betweenness centrality (0.127) - this node is a cross-community bridge._
-- **Why does `getTagText()` connect `Quick Info Rendering` to `Doc Parsing Helpers`, `Completion Pipeline`?**
-  _High betweenness centrality (0.043) - this node is a cross-community bridge._
-- **Why does `getDeprecatedTag()` connect `Completion Pipeline` to `Doc Parsing Helpers`?**
-  _High betweenness centrality (0.033) - this node is a cross-community bridge._
+- **Why does `TypeInfoFactory` connect `Community 0` to `Community 2`, `Community 6`?**
+  _High betweenness centrality (0.250) - this node is a cross-community bridge._
+- **Why does `dedupeTagInfos()` connect `Community 1` to `Community 0`?**
+  _High betweenness centrality (0.101) - this node is a cross-community bridge._
+- **Why does `createDeprecatedDiagnostics()` connect `Community 4` to `Community 2`?**
+  _High betweenness centrality (0.056) - this node is a cross-community bridge._
 - **What connects `TypeScript Runtime Externalization`, `Declaration File Generation`, `Vitest Test Discovery` to the rest of the system?**
-  _35 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `Type Info Factory` be split into smaller, more focused modules?**
-  _Cohesion score 0.08 - nodes in this community are weakly interconnected._
-- **Should `Completion Semantics` be split into smaller, more focused modules?**
-  _Cohesion score 0.07 - nodes in this community are weakly interconnected._
-- **Should `Doc Parsing Helpers` be split into smaller, more focused modules?**
+  _47 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `Community 0` be split into smaller, more focused modules?**
+  _Cohesion score 0.09 - nodes in this community are weakly interconnected._
+- **Should `Community 2` be split into smaller, more focused modules?**
+  _Cohesion score 0.11 - nodes in this community are weakly interconnected._
+- **Should `Community 3` be split into smaller, more focused modules?**
   _Cohesion score 0.1 - nodes in this community are weakly interconnected._
