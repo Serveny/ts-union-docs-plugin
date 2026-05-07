@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.3]
+
+- **Fixed** Missing newline at param rendering
+- **Fixed** Fix cache miss at files without deprecated functions
+
 ## [0.3.2]
 
 - **Fixed** Completion inference for generic parameter constraints
