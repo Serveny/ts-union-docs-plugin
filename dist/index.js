@@ -67,7 +67,7 @@ var TypeInfoFactory = class {
 		const templateEntries = this.filterRegexMembers(unionMemberNodes, context.templateFilterType ?? context.contextualType);
 		const result = {
 			initNode: context.node,
-			templateInfo: templateEntries.length === 0 ? null : this.createUnionInfo(SupportedType.Variable, "completion", context.node, templateEntries),
+			templateInfo: templateEntries.length === 0 ? null : this.createUnionInfo(1, "completion", context.node, templateEntries),
 			entryInfos: this.createCompletionEntryInfos(context.node, unionMemberNodes),
 			templateFilterType: context.templateFilterType
 		};
@@ -213,7 +213,7 @@ var TypeInfoFactory = class {
 		const unionMemberNodes = this.collectUnionMemberNodes(typeNode);
 		if (unionMemberNodes.length === 0) return null;
 		const valueNodes = unionMemberNodes.filter((entry) => this.cmp(expr, entry));
-		return this.createUnionInfo(SupportedType.Variable, this.getExpressionName(expr), expr, valueNodes, this.getValue(expr));
+		return this.createUnionInfo(1, this.getExpressionName(expr), expr, valueNodes, this.getValue(expr));
 	}
 	getExpressionName(expr) {
 		const parent = expr.parent;
@@ -227,7 +227,7 @@ var TypeInfoFactory = class {
 		const unionMemberNodes = this.collectUnionMemberNodes(decl.type, void 0, typeArgMap);
 		if (unionMemberNodes.length === 0) return null;
 		const valueNodes = unionMemberNodes.filter((entry) => this.cmp(arg, entry));
-		return this.createUnionInfo(SupportedType.Parameter, paramSymbol.name, decl.type, valueNodes, this.getValue(arg));
+		return this.createUnionInfo(0, paramSymbol.name, decl.type, valueNodes, this.getValue(arg));
 	}
 	buildCallTypeParameterMap(arg, paramDecl) {
 		const signatureDecl = paramDecl.parent;
@@ -317,7 +317,7 @@ var TypeInfoFactory = class {
 		const unionMemberNodes = this.collectUnionMemberNodes(decl.type);
 		if (unionMemberNodes.length === 0) return null;
 		const valueNodes = unionMemberNodes.filter((entry) => this.cmp(decl.initializer, entry));
-		return this.createUnionInfo(SupportedType.Variable, symbol.name, decl.type, valueNodes, this.getValue(decl.initializer));
+		return this.createUnionInfo(1, symbol.name, decl.type, valueNodes, this.getValue(decl.initializer));
 	}
 	createCompletionEntryInfos(initNode, entries) {
 		const groupedEntries = /* @__PURE__ */ new Map();
@@ -328,7 +328,7 @@ var TypeInfoFactory = class {
 			if (group) group.push(entry);
 			else groupedEntries.set(entryName, [entry]);
 		}
-		return [...groupedEntries.entries()].map(([entryName, groupedNodes]) => this.createUnionInfo(SupportedType.Variable, entryName, initNode, groupedNodes, entryName));
+		return [...groupedEntries.entries()].map(([entryName, groupedNodes]) => this.createUnionInfo(1, entryName, initNode, groupedNodes, entryName));
 	}
 	createUnionInfo(type, name, initNode, entries, value) {
 		const metadata = this.collectDocMetadata(entries);

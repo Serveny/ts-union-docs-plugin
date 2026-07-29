@@ -1,7 +1,7 @@
-# Graph Report - ts-union-docs-plugin  (2026-05-07)
+# Graph Report - .  (2026-07-29)
 
 ## Corpus Check
-- 34 files · ~70,988 words
+- 41 files · ~70,966 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
