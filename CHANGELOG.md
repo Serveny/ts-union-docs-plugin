@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.4]
 
 - **Fixed** Stale Quick Info, completions and diagnostics after edits (caches are now invalidated before reading)
 - **Fixed** Stack overflow on recursive type aliases (e.g. `type Json = string | Json[]`)
