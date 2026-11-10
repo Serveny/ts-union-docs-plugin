@@ -14,12 +14,12 @@ export default defineConfig({
 		},
 		// Generate d.ts files
 		dts({
-			tsconfigPath: resolve(__dirname, 'tsconfig.json'),
+			tsconfigPath: resolve(import.meta.dirname, 'tsconfig.json'),
 		}),
 	],
 	build: {
 		lib: {
-			entry: resolve(__dirname, 'src/index.ts'),
+			entry: resolve(import.meta.dirname, 'src/index.ts'),
 			fileName: `index.js`,
 			formats: ['cjs'],
 		},
