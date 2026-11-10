@@ -12,10 +12,6 @@ Before completing a change, run the relevant checks:
 - `npm run test`
 - `npm run build` when build output or package/export behavior is affected
 
-After code, test, documentation, or script changes, update the graph:
-
-- `graphify update .` or, in the agent context, `/graphify . --update`
-
 ## Version Releases
 
 When asked to build or commit a new version, run the version bump script:
