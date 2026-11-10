@@ -1,5 +1,4 @@
 import type * as TS from 'typescript/lib/tsserverlibrary';
-export { getDeprecatedTag, getTagText } from './utils';
 export declare enum SupportedType {
     Parameter = 0,
     Variable = 1
@@ -25,18 +24,16 @@ export interface DeprecatedUsageInfo {
     info: UnionInfo;
 }
 export interface CalledNode extends TS.Node {
-    id?: number;
     callParent?: CalledNode;
     original?: TS.Node;
     isRegexPattern?: boolean;
-    codeText?: string;
 }
 export declare class TypeInfoFactory {
     private ts;
     private ls;
     private checker;
     private currentProgram;
-    private sourceFileCache;
+    private expandingNodes;
     private typeInfoCache;
     private completionInfoCache;
     private deprecatedUsageCache;
@@ -48,12 +45,13 @@ export declare class TypeInfoFactory {
     private getTypeInfoForNode;
     private getTypeInfoForExpression;
     private getUnionInfoForArgument;
+    private getArgumentParameter;
+    private getArgumentParameterDecl;
     private getCompletionContext;
     private getParameterTypeContext;
     private getTypeParameterConstraintNode;
     private resolveTypeNode;
     private getTypeNodeFromAlias;
-    private getTypeNodeFromParameter;
     private getTypeNodeFromInitializer;
     private filterRegexMembers;
     private findCallLikeExpression;
@@ -69,18 +67,19 @@ export declare class TypeInfoFactory {
     private isDirectTypeParameterReference;
     private createTypeNodeFromExpression;
     private getUnionVariableInfo;
+    private createMatchingUnionInfo;
     private createCompletionEntryInfos;
     private createUnionInfo;
     private collectDocMetadata;
     private getInitNode;
     private getSourceFile;
-    private getProgram;
+    private syncProgram;
     private clearCaches;
     private findNodeAtPos;
     private getCallExpression;
     private getUnionParametersInfo;
-    private getValue;
     private collectUnionMemberNodes;
+    private expandUnionMemberNodes;
     private collectConditionalTypeNode;
     private collectIndexedAccessTypeNode;
     private collectTypeLiteralNode;
@@ -101,6 +100,5 @@ export declare class TypeInfoFactory {
     private unwrapExpression;
     private getReferencedSymbol;
     private getConstInitializer;
-    private getCompletionEntryName;
 }
 export declare function isRegexNode(node: CalledNode): node is TS.StringLiteral & CalledNode;

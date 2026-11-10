@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+- **Fixed** Stale Quick Info, completions and diagnostics after edits (caches are now invalidated before reading)
+- **Fixed** Stack overflow on recursive type aliases (e.g. `type Json = string | Json[]`)
+- **Fixed** Unescaped literal text after `${number}`, `${boolean}` and `${string}` in template literal patterns
+- **Fixed** Empty Quick Info popup inside calls without union parameters
+- **Fixed** Missing union member docs in files with CRLF line endings
+- **Improved** Performance of JSDoc lookup and union member matching
+- **Changed** Refactored type info resolution and removed dead code
+- **Maintenance** Updated dev dependencies 
+- **Tests** Added regression tests for recursive types, template escaping and cache invalidation
+
 ## [0.3.3]
 
 - **Fixed** Missing newline at param rendering

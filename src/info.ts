@@ -5,8 +5,6 @@ import {
 	isMarkdownTableLine,
 } from './utils';
 
-export { getDeprecatedTag, getTagText } from './utils';
-
 // The supported start points for union documentation and completions
 export enum SupportedType {
 	Parameter,
@@ -40,17 +38,16 @@ export interface DeprecatedUsageInfo {
 }
 
 export interface CalledNode extends TS.Node {
-	id?: number;
 	callParent?: CalledNode; // The node that references to it
 	original?: TS.Node; // For resolved nodes
 	isRegexPattern?: boolean; // For template syntax like ${number}
-	codeText?: string;
 }
 
 export class TypeInfoFactory {
 	private checker!: TS.TypeChecker;
 	private currentProgram: TS.Program | null = null;
-	private sourceFileCache = new Map<string, TS.SourceFile | null>();
+	// Type nodes currently being expanded, to stop recursive types like `type Json = string | Json[]`
+	private expandingNodes = new Set<TS.Node>();
 	private typeInfoCache = new Map<string, UnionInfo[] | null>();
 	private completionInfoCache = new Map<string, CompletionContextInfo | null>();
 	private deprecatedUsageCache = new Map<string, DeprecatedUsageInfo[]>();
@@ -61,6 +58,7 @@ export class TypeInfoFactory {
 	) {}
 
 	getTypeInfo(fileName: string, position: number): UnionInfo[] | null {
+		if (!this.syncProgram()) return null;
 		const cacheKey = `${fileName}:${position}`;
 		if (this.typeInfoCache.has(cacheKey)) {
 			return this.typeInfoCache.get(cacheKey) ?? null;
@@ -76,6 +74,7 @@ export class TypeInfoFactory {
 		fileName: string,
 		position: number
 	): CompletionContextInfo | null {
+		if (!this.syncProgram()) return null;
 		const cacheKey = `${fileName}:${position}`;
 		if (this.completionInfoCache.has(cacheKey)) {
 			return this.completionInfoCache.get(cacheKey) ?? null;
@@ -131,6 +130,7 @@ export class TypeInfoFactory {
 	}
 
 	getDeprecatedUsageInfos(fileName: string): DeprecatedUsageInfo[] {
+		if (!this.syncProgram()) return [];
 		if (this.deprecatedUsageCache.has(fileName))
 			return this.deprecatedUsageCache.get(fileName)!;
 
@@ -184,15 +184,27 @@ export class TypeInfoFactory {
 	}
 
 	private getUnionInfoForArgument(expr: TS.Expression): UnionInfo | null {
-		const callLike = this.findCallLikeExpression(expr);
-		if (!callLike) return null;
+		const paramSymbol = this.getArgumentParameter(expr);
+		return paramSymbol ? this.getUnionInfo(paramSymbol, expr) : null;
+	}
 
-		const argIndex = callLike.arguments?.indexOf(expr as any) ?? -1;
-		if (argIndex < 0) return null;
+	// Parameter symbol of the call/new expression that receives `expr` as direct argument
+	private getArgumentParameter(expr: TS.Expression): TS.Symbol | null {
+		const callLike = this.findCallLikeExpression(expr);
+		const argIndex = callLike?.arguments?.indexOf(expr) ?? -1;
+		if (!callLike || argIndex < 0) return null;
 
 		const signature = this.checker.getResolvedSignature(callLike);
-		const paramSymbol = signature?.getParameters()[argIndex];
-		return paramSymbol ? this.getUnionInfo(paramSymbol, expr) : null;
+		return signature?.getParameters()[argIndex] ?? null;
+	}
+
+	private getArgumentParameterDecl(
+		expr: TS.Expression
+	): (TS.ParameterDeclaration & { type: TS.TypeNode }) | null {
+		const decl = this.getArgumentParameter(expr)?.valueDeclaration;
+		return decl && this.ts.isParameter(decl) && decl.type
+			? (decl as TS.ParameterDeclaration & { type: TS.TypeNode })
+			: null;
 	}
 
 	private getCompletionContext(fileName: string, position: number) {
@@ -217,17 +229,8 @@ export class TypeInfoFactory {
 	}
 
 	private getParameterTypeContext(node: TS.Expression) {
-		const callLike = this.findCallLikeExpression(node);
-		if (!callLike) return null;
-
-		const signature = this.checker.getResolvedSignature(callLike);
-		const argIndex = callLike.arguments?.indexOf(node as any) ?? -1;
-		if (argIndex < 0) return null;
-
-		const paramSymbol = signature?.getParameters()[argIndex];
-		const paramDecl = paramSymbol?.getDeclarations()?.[0];
-		if (!paramDecl || !this.ts.isParameter(paramDecl) || !paramDecl.type)
-			return null;
+		const paramDecl = this.getArgumentParameterDecl(node);
+		if (!paramDecl) return null;
 
 		const typeArgMap = this.buildCallTypeParameterMap(node, paramDecl);
 		const resolvedTypeNode =
@@ -266,32 +269,16 @@ export class TypeInfoFactory {
 		const aliasNode = this.getTypeNodeFromAlias(contextualType);
 		if (aliasNode) return aliasNode;
 
-		const paramNode = this.getTypeNodeFromParameter(node);
-		if (paramNode) return paramNode;
-
-		return this.getTypeNodeFromInitializer(node);
+		return (
+			this.getArgumentParameterDecl(node)?.type ??
+			this.getTypeNodeFromInitializer(node)
+		);
 	}
 
 	private getTypeNodeFromAlias(type: TS.Type): TS.TypeNode | null {
 		const decl = type.aliasSymbol?.getDeclarations()?.[0];
 		if (decl && this.ts.isTypeAliasDeclaration(decl)) return decl.type;
 		return null;
-	}
-
-	private getTypeNodeFromParameter(node: TS.Expression): TS.TypeNode | null {
-		const callLike = this.findCallLikeExpression(node);
-		if (!callLike) return null;
-
-		const signature = this.checker.getResolvedSignature(callLike);
-		const argIndex = callLike.arguments?.indexOf(node as any) ?? -1;
-		if (argIndex < 0) return null;
-
-		const paramSymbol = signature?.getParameters()[argIndex];
-		const paramDecl = paramSymbol?.getDeclarations()?.[0];
-
-		return paramDecl && this.ts.isParameter(paramDecl) && paramDecl.type
-			? paramDecl.type
-			: null;
 	}
 
 	private getTypeNodeFromInitializer(node: TS.Expression): TS.TypeNode | null {
@@ -345,19 +332,12 @@ export class TypeInfoFactory {
 		const typeNode = this.resolveTypeNode(expr, contextualType);
 		if (!typeNode) return null;
 
-		const unionMemberNodes = this.collectUnionMemberNodes(typeNode);
-		if (unionMemberNodes.length === 0) return null;
-
-		const valueNodes = unionMemberNodes.filter((entry) =>
-			this.cmp(expr, entry)
-		);
-
-		return this.createUnionInfo(
+		return this.createMatchingUnionInfo(
 			SupportedType.Variable,
 			this.getExpressionName(expr),
 			expr,
-			valueNodes,
-			this.getValue(expr)
+			this.collectUnionMemberNodes(typeNode),
+			expr
 		);
 	}
 
@@ -385,21 +365,12 @@ export class TypeInfoFactory {
 		const typeArgMap = this.isDirectTypeParameterReference(decl.type)
 			? undefined
 			: this.buildCallTypeParameterMap(arg, decl);
-		const unionMemberNodes = this.collectUnionMemberNodes(
-			decl.type,
-			undefined,
-			typeArgMap
-		);
-		if (unionMemberNodes.length === 0) return null;
-
-		const valueNodes = unionMemberNodes.filter((entry) => this.cmp(arg, entry));
-
-		return this.createUnionInfo(
+		return this.createMatchingUnionInfo(
 			SupportedType.Parameter,
 			paramSymbol.name,
 			decl.type,
-			valueNodes,
-			this.getValue(arg)
+			this.collectUnionMemberNodes(decl.type, undefined, typeArgMap),
+			arg
 		);
 	}
 
@@ -590,19 +561,32 @@ export class TypeInfoFactory {
 			return null;
 		if (!decl.type || !decl.initializer) return null;
 
-		const unionMemberNodes = this.collectUnionMemberNodes(decl.type);
-		if (unionMemberNodes.length === 0) return null;
-
-		const valueNodes = unionMemberNodes.filter((entry) =>
-			this.cmp(decl.initializer as TS.Expression, entry)
-		);
-
-		return this.createUnionInfo(
+		return this.createMatchingUnionInfo(
 			SupportedType.Variable,
 			symbol.name,
 			decl.type,
-			valueNodes,
-			this.getValue(decl.initializer)
+			this.collectUnionMemberNodes(decl.type),
+			decl.initializer
+		);
+	}
+
+	// Union info with only the members matching the (const-resolved) value of `expr`
+	private createMatchingUnionInfo(
+		type: SupportedType,
+		name: string,
+		initNode: CalledNode,
+		members: CalledNode[],
+		expr: TS.Expression
+	): UnionInfo | null {
+		if (members.length === 0) return null;
+
+		const resolvedExpr = this.resolveExpression(expr);
+		return this.createUnionInfo(
+			type,
+			name,
+			initNode,
+			members.filter((member) => this.cmp(resolvedExpr, member)),
+			getExpressionValueText(this.ts, resolvedExpr) ?? expr.getText()
 		);
 	}
 
@@ -612,7 +596,7 @@ export class TypeInfoFactory {
 	): UnionInfo[] {
 		const groupedEntries = new Map<string, CalledNode[]>();
 		for (const entry of entries) {
-			const entryName = this.getCompletionEntryName(entry);
+			const entryName = getTypeNodeValueText(this.ts, entry);
 			if (!entryName) continue;
 
 			const group = groupedEntries.get(entryName);
@@ -693,20 +677,11 @@ export class TypeInfoFactory {
 	}
 
 	private getSourceFile(fileName: string) {
-		const program = this.getProgram();
-		if (!program) return null;
-
-		if (!this.sourceFileCache.has(fileName)) {
-			this.sourceFileCache.set(
-				fileName,
-				program.getSourceFile(fileName) ?? null
-			);
-		}
-
-		return this.sourceFileCache.get(fileName) ?? null;
+		return this.syncProgram()?.getSourceFile(fileName) ?? null;
 	}
 
-	private getProgram(): TS.Program | null {
+	// Must run before any cache read: a new program invalidates all cached nodes and positions
+	private syncProgram(): TS.Program | null {
 		const program = this.ls.getProgram() ?? null;
 		if (!program) {
 			this.currentProgram = null;
@@ -724,7 +699,6 @@ export class TypeInfoFactory {
 	}
 
 	private clearCaches() {
-		this.sourceFileCache.clear();
 		this.typeInfoCache.clear();
 		this.completionInfoCache.clear();
 		this.deprecatedUsageCache.clear();
@@ -769,18 +743,26 @@ export class TypeInfoFactory {
 		return paramTypes;
 	}
 
-	private getValue(expr: TS.Expression): string {
-		const resolvedExpr = this.resolveExpression(expr);
-		return getExpressionValueText(this.ts, resolvedExpr) ?? expr.getText();
-	}
-
 	private collectUnionMemberNodes(
 		node: TS.Node,
 		callParent?: TS.Node,
 		typeArgMap?: Map<TS.Symbol, TS.TypeNode>
 	): CalledNode[] {
+		if (this.expandingNodes.has(node)) return [];
+		this.expandingNodes.add(node);
+		try {
+			return this.expandUnionMemberNodes(node, callParent, typeArgMap);
+		} finally {
+			this.expandingNodes.delete(node);
+		}
+	}
+
+	private expandUnionMemberNodes(
+		node: TS.Node,
+		callParent?: TS.Node,
+		typeArgMap?: Map<TS.Symbol, TS.TypeNode>
+	): CalledNode[] {
 		const ts = this.ts;
-		(node as any).codeText = getNodeText(node);
 
 		if (
 			ts.isUnionTypeNode(node) ||
@@ -1062,8 +1044,6 @@ export class TypeInfoFactory {
 				? called.callParent
 				: undefined;
 		const original = originalOverride ?? called.original ?? node;
-		(litNode as any).id = (original as any).id ?? called.id;
-
 		return calledNode(litNode, callParent, original, isRegexPattern);
 	}
 
@@ -1110,7 +1090,7 @@ export class TypeInfoFactory {
 					spanNodes.push(
 						this.createLiteralNode(
 							typeNode,
-							'\\d+(\\.\\d+)?' + span.literal.text,
+							'\\d+(\\.\\d+)?' + escapeRegExp(span.literal.text),
 							node,
 							true
 						)
@@ -1121,7 +1101,7 @@ export class TypeInfoFactory {
 					spanNodes.push(
 						this.createLiteralNode(
 							typeNode,
-							'(true|false)' + span.literal.text,
+							'(true|false)' + escapeRegExp(span.literal.text),
 							node,
 							true
 						)
@@ -1132,7 +1112,7 @@ export class TypeInfoFactory {
 					spanNodes.push(
 						this.createLiteralNode(
 							typeNode,
-							'.*' + span.literal.text,
+							'.*' + escapeRegExp(span.literal.text),
 							node,
 							true
 						)
@@ -1183,9 +1163,8 @@ export class TypeInfoFactory {
 		return map;
 	}
 
-	private cmp(expr: TS.Expression, node: CalledNode): boolean {
-		const resolvedExpr = this.resolveExpression(expr);
-
+	// `resolvedExpr` must already be passed through resolveExpression
+	private cmp(resolvedExpr: TS.Expression, node: CalledNode): boolean {
 		// check for generated regex pattern
 		if (isRegexNode(node) && isStringLikeExpression(this.ts, resolvedExpr)) {
 			// Surround with ^...$, so the whole string must match
@@ -1265,32 +1244,16 @@ export class TypeInfoFactory {
 	}
 
 	private unwrapExpression(expr: TS.Expression): TS.Expression {
-		let current = expr;
-
-		while (true) {
-			if (this.ts.isParenthesizedExpression(current)) {
-				current = current.expression;
-				continue;
-			}
-			if (this.ts.isAsExpression(current)) {
-				current = current.expression;
-				continue;
-			}
-			if (this.ts.isTypeAssertionExpression(current)) {
-				current = current.expression;
-				continue;
-			}
-			if (this.ts.isSatisfiesExpression?.(current)) {
-				current = current.expression;
-				continue;
-			}
-			if (this.ts.isNonNullExpression(current)) {
-				current = current.expression;
-				continue;
-			}
-
-			return current;
-		}
+		const ts = this.ts;
+		while (
+			ts.isParenthesizedExpression(expr) ||
+			ts.isAsExpression(expr) ||
+			ts.isTypeAssertionExpression(expr) ||
+			ts.isSatisfiesExpression?.(expr) ||
+			ts.isNonNullExpression(expr)
+		)
+			expr = expr.expression;
+		return expr;
 	}
 
 	private getReferencedSymbol(expr: TS.Expression): TS.Symbol | null {
@@ -1325,22 +1288,6 @@ export class TypeInfoFactory {
 		return null;
 	}
 
-	private getCompletionEntryName(node: CalledNode): string | null {
-		if (!this.ts.isLiteralTypeNode(node)) return null;
-
-		const literal = node.literal;
-		if (
-			this.ts.isStringLiteral(literal) ||
-			this.ts.isNumericLiteral(literal) ||
-			this.ts.isBigIntLiteral(literal)
-		)
-			return literal.text;
-		if (literal.kind === this.ts.SyntaxKind.TrueKeyword) return 'true';
-		if (literal.kind === this.ts.SyntaxKind.FalseKeyword) return 'false';
-		if (literal.kind === this.ts.SyntaxKind.NullKeyword) return 'null';
-
-		return null;
-	}
 }
 
 function extractJSDocMetadataFromNode(ts: typeof TS, node: CalledNode) {
@@ -1367,15 +1314,13 @@ function getLeadingComment(
 	if (comments.length > 0 && text[comments[0].pos + 2] === '*')
 		return comments[comments.length - 1];
 
-	text = text.substring(0, pos);
-	const commentStart = text.lastIndexOf('/**');
-	if (commentStart === -1) return;
-
-	const commentEnd = text.lastIndexOf('*/');
-	if (commentEnd === -1) return;
+	// Search backwards from pos without copying the file prefix
+	const commentStart = text.lastIndexOf('/**', pos - 3);
+	const commentEnd = text.lastIndexOf('*/', pos - 2);
+	if (commentStart === -1 || commentEnd < commentStart) return;
 
 	const textBetween = text.substring(commentEnd + 2, pos);
-	if (/[^ \t|\n]/.test(textBetween)) return;
+	if (/[^ \t|\r\n]/.test(textBetween)) return;
 
 	return {
 		pos: commentStart + 3,
@@ -1495,12 +1440,6 @@ function calledNode<T extends TS.Node>(
 	return called as CalledNode & T;
 }
 
-function getNodeText(node: TS.Node) {
-	const text = node.getSourceFile()?.text;
-	if (!text) return '<No Source>';
-	return text.substring(node.getStart(), node.getEnd());
-}
-
 function getExpressionValueText(
 	ts: typeof TS,
 	expr: TS.Expression
@@ -1521,10 +1460,12 @@ function getTypeNodeValueText(
 	if (!ts.isLiteralTypeNode(node)) return undefined;
 
 	const literal = node.literal;
-	if (ts.isStringLiteral(literal) || ts.isNumericLiteral(literal)) {
+	if (
+		ts.isStringLiteral(literal) ||
+		ts.isNumericLiteral(literal) ||
+		ts.isBigIntLiteral(literal)
+	)
 		return literal.text;
-	}
-	if (ts.isBigIntLiteral(literal)) return literal.text;
 	if (literal.kind === ts.SyntaxKind.TrueKeyword) return 'true';
 	if (literal.kind === ts.SyntaxKind.FalseKeyword) return 'false';
 	if (literal.kind === ts.SyntaxKind.NullKeyword) return 'null';

@@ -2,14 +2,7 @@ import type * as TS from 'typescript/lib/tsserverlibrary';
 import { DeprecatedUsageInfo } from './info';
 import { getDeprecatedTag, getTagText } from './utils';
 
-export function createDeprecatedSemanticDiagnostics(
-	ts: typeof TS,
-	usages: DeprecatedUsageInfo[]
-): TS.Diagnostic[] {
-	return createDeprecatedDiagnostics(ts, usages);
-}
-
-function createDeprecatedDiagnostics(
+export function createDeprecatedDiagnostics(
 	ts: typeof TS,
 	usages: DeprecatedUsageInfo[]
 ): TS.DiagnosticWithLocation[] {

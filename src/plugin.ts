@@ -4,7 +4,7 @@ import {
 	applyCompletionInfo,
 	defaultComplInfo,
 } from './completion';
-import { createDeprecatedSemanticDiagnostics } from './diagnostics';
+import { createDeprecatedDiagnostics } from './diagnostics';
 import { addExtraQuickInfo, createFallbackQuickInfo } from './docs';
 import { TypeInfoFactory } from './info';
 
@@ -21,12 +21,13 @@ export class UnionTypeDocsPlugin {
 		proxy.getQuickInfoAtPosition = (fileName, pos) => {
 			try {
 				const typeInfo = typeInfoFactory.getTypeInfo(fileName, pos);
+				const hasTypeInfo = typeInfo != null && typeInfo.length > 0;
 				const quickInfo =
 					languageService.getQuickInfoAtPosition(fileName, pos) ??
-					(typeInfo ? createFallbackQuickInfo(ts, pos, typeInfo) : undefined);
-				if (!quickInfo || !typeInfo) return quickInfo;
+					(hasTypeInfo ? createFallbackQuickInfo(ts, pos, typeInfo) : undefined);
+				if (!quickInfo || !hasTypeInfo) return quickInfo;
 
-				addExtraQuickInfo(ts, quickInfo, typeInfo);
+				addExtraQuickInfo(quickInfo, typeInfo);
 				return quickInfo;
 			} catch (err) {
 				logPluginError(ts, logger, 'Quick Info', err);
@@ -78,22 +79,23 @@ export class UnionTypeDocsPlugin {
 				);
 				if (entryInfo) addDeprecatedCompletionEntryDetails(details, entryInfo);
 			} catch (err) {
-				logPluginError(this.ts, logger, 'Completion Details', err);
+				logPluginError(ts, logger, 'Completion Details', err);
 			}
 
 			return details;
 		};
 
-		proxy.getSemanticDiagnostics = (fileName) =>
-			appendDeprecatedDiagnostics(
-				languageService.getSemanticDiagnostics(fileName),
-				() =>
-					createDeprecatedSemanticDiagnostics(
-						this.ts,
-						typeInfoFactory.getDeprecatedUsageInfos(fileName)
-					),
-				(err) => logPluginError(this.ts, logger, 'Semantic Diagnostics', err)
-			);
+		proxy.getSemanticDiagnostics = (fileName) => {
+			const diagnostics = languageService.getSemanticDiagnostics(fileName);
+
+			try {
+				const usages = typeInfoFactory.getDeprecatedUsageInfos(fileName);
+				return [...diagnostics, ...createDeprecatedDiagnostics(ts, usages)];
+			} catch (err) {
+				logPluginError(ts, logger, 'Semantic Diagnostics', err);
+				return diagnostics;
+			}
+		};
 
 		logger.info('[Union type docs plugin] Loaded');
 		return proxy;
@@ -112,22 +114,6 @@ function createLanguageServiceProxy(
 			typeof value === 'function' ? value.bind(languageService) : value;
 	}
 	return proxy;
-}
-
-function appendDeprecatedDiagnostics<TDiagnostic extends TS.Diagnostic>(
-	diagnostics: readonly TDiagnostic[],
-	createDiagnostics: () => TDiagnostic[],
-	onError: (err: unknown) => void
-): TDiagnostic[] {
-	const nextDiagnostics = [...diagnostics];
-
-	try {
-		nextDiagnostics.push(...createDiagnostics());
-	} catch (err) {
-		onError(err);
-	}
-
-	return nextDiagnostics;
 }
 
 function logPluginError(

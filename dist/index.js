@@ -1,4 +1,4 @@
-//#region src/utils.ts
+// src/utils.ts
 function getTagText(tag) {
 	return tag?.text?.map((part) => part.text).join("") ?? "";
 }
@@ -19,8 +19,7 @@ function dedupeTagInfos(tags) {
 	}
 	return unique;
 }
-//#endregion
-//#region src/info.ts
+// src/info.ts
 var SupportedType = /* @__PURE__ */ function(SupportedType) {
 	SupportedType[SupportedType["Parameter"] = 0] = "Parameter";
 	SupportedType[SupportedType["Variable"] = 1] = "Variable";
@@ -42,12 +41,13 @@ var TypeInfoFactory = class {
 		this.ts = ts;
 		this.ls = ls;
 		this.currentProgram = null;
-		this.sourceFileCache = /* @__PURE__ */ new Map();
+		this.expandingNodes = /* @__PURE__ */ new Set();
 		this.typeInfoCache = /* @__PURE__ */ new Map();
 		this.completionInfoCache = /* @__PURE__ */ new Map();
 		this.deprecatedUsageCache = /* @__PURE__ */ new Map();
 	}
 	getTypeInfo(fileName, position) {
+		if (!this.syncProgram()) return null;
 		const cacheKey = `${fileName}:${position}`;
 		if (this.typeInfoCache.has(cacheKey)) return this.typeInfoCache.get(cacheKey) ?? null;
 		const node = this.getInitNode(fileName, position);
@@ -56,6 +56,7 @@ var TypeInfoFactory = class {
 		return result;
 	}
 	getCompletionInfo(fileName, position) {
+		if (!this.syncProgram()) return null;
 		const cacheKey = `${fileName}:${position}`;
 		if (this.completionInfoCache.has(cacheKey)) return this.completionInfoCache.get(cacheKey) ?? null;
 		const context = this.getCompletionContext(fileName, position);
@@ -78,6 +79,7 @@ var TypeInfoFactory = class {
 		return this.getCompletionInfo(fileName, position)?.entryInfos.find((info) => info.name === entryName) ?? null;
 	}
 	getDeprecatedUsageInfos(fileName) {
+		if (!this.syncProgram()) return [];
 		if (this.deprecatedUsageCache.has(fileName)) return this.deprecatedUsageCache.get(fileName);
 		const sourceFile = this.getSourceFile(fileName);
 		if (!sourceFile) return [];
@@ -119,12 +121,18 @@ var TypeInfoFactory = class {
 		return contextualInfo ? [contextualInfo] : [];
 	}
 	getUnionInfoForArgument(expr) {
-		const callLike = this.findCallLikeExpression(expr);
-		if (!callLike) return null;
-		const argIndex = callLike.arguments?.indexOf(expr) ?? -1;
-		if (argIndex < 0) return null;
-		const paramSymbol = this.checker.getResolvedSignature(callLike)?.getParameters()[argIndex];
+		const paramSymbol = this.getArgumentParameter(expr);
 		return paramSymbol ? this.getUnionInfo(paramSymbol, expr) : null;
+	}
+	getArgumentParameter(expr) {
+		const callLike = this.findCallLikeExpression(expr);
+		const argIndex = callLike?.arguments?.indexOf(expr) ?? -1;
+		if (!callLike || argIndex < 0) return null;
+		return this.checker.getResolvedSignature(callLike)?.getParameters()[argIndex] ?? null;
+	}
+	getArgumentParameterDecl(expr) {
+		const decl = this.getArgumentParameter(expr)?.valueDeclaration;
+		return decl && this.ts.isParameter(decl) && decl.type ? decl : null;
 	}
 	getCompletionContext(fileName, position) {
 		const node = this.getInitNode(fileName, position);
@@ -143,13 +151,8 @@ var TypeInfoFactory = class {
 		};
 	}
 	getParameterTypeContext(node) {
-		const callLike = this.findCallLikeExpression(node);
-		if (!callLike) return null;
-		const signature = this.checker.getResolvedSignature(callLike);
-		const argIndex = callLike.arguments?.indexOf(node) ?? -1;
-		if (argIndex < 0) return null;
-		const paramDecl = (signature?.getParameters()[argIndex])?.getDeclarations()?.[0];
-		if (!paramDecl || !this.ts.isParameter(paramDecl) || !paramDecl.type) return null;
+		const paramDecl = this.getArgumentParameterDecl(node);
+		if (!paramDecl) return null;
 		const typeArgMap = this.buildCallTypeParameterMap(node, paramDecl);
 		const resolvedTypeNode = this.resolveMappedTypeNode(paramDecl.type, typeArgMap) ?? paramDecl.type;
 		return {
@@ -165,23 +168,12 @@ var TypeInfoFactory = class {
 	resolveTypeNode(node, contextualType) {
 		const aliasNode = this.getTypeNodeFromAlias(contextualType);
 		if (aliasNode) return aliasNode;
-		const paramNode = this.getTypeNodeFromParameter(node);
-		if (paramNode) return paramNode;
-		return this.getTypeNodeFromInitializer(node);
+		return this.getArgumentParameterDecl(node)?.type ?? this.getTypeNodeFromInitializer(node);
 	}
 	getTypeNodeFromAlias(type) {
 		const decl = type.aliasSymbol?.getDeclarations()?.[0];
 		if (decl && this.ts.isTypeAliasDeclaration(decl)) return decl.type;
 		return null;
-	}
-	getTypeNodeFromParameter(node) {
-		const callLike = this.findCallLikeExpression(node);
-		if (!callLike) return null;
-		const signature = this.checker.getResolvedSignature(callLike);
-		const argIndex = callLike.arguments?.indexOf(node) ?? -1;
-		if (argIndex < 0) return null;
-		const paramDecl = (signature?.getParameters()[argIndex])?.getDeclarations()?.[0];
-		return paramDecl && this.ts.isParameter(paramDecl) && paramDecl.type ? paramDecl.type : null;
 	}
 	getTypeNodeFromInitializer(node) {
 		const parent = node.parent;
@@ -210,10 +202,7 @@ var TypeInfoFactory = class {
 		if (!contextualType) return null;
 		const typeNode = this.resolveTypeNode(expr, contextualType);
 		if (!typeNode) return null;
-		const unionMemberNodes = this.collectUnionMemberNodes(typeNode);
-		if (unionMemberNodes.length === 0) return null;
-		const valueNodes = unionMemberNodes.filter((entry) => this.cmp(expr, entry));
-		return this.createUnionInfo(1, this.getExpressionName(expr), expr, valueNodes, this.getValue(expr));
+		return this.createMatchingUnionInfo(1, this.getExpressionName(expr), expr, this.collectUnionMemberNodes(typeNode), expr);
 	}
 	getExpressionName(expr) {
 		const parent = expr.parent;
@@ -224,10 +213,7 @@ var TypeInfoFactory = class {
 		const decl = paramSymbol.valueDeclaration;
 		if (!decl || !this.ts.isParameter(decl) || !decl.type) return null;
 		const typeArgMap = this.isDirectTypeParameterReference(decl.type) ? void 0 : this.buildCallTypeParameterMap(arg, decl);
-		const unionMemberNodes = this.collectUnionMemberNodes(decl.type, void 0, typeArgMap);
-		if (unionMemberNodes.length === 0) return null;
-		const valueNodes = unionMemberNodes.filter((entry) => this.cmp(arg, entry));
-		return this.createUnionInfo(0, paramSymbol.name, decl.type, valueNodes, this.getValue(arg));
+		return this.createMatchingUnionInfo(0, paramSymbol.name, decl.type, this.collectUnionMemberNodes(decl.type, void 0, typeArgMap), arg);
 	}
 	buildCallTypeParameterMap(arg, paramDecl) {
 		const signatureDecl = paramDecl.parent;
@@ -314,15 +300,17 @@ var TypeInfoFactory = class {
 		const decl = symbol.valueDeclaration;
 		if (!decl || !(this.ts.isVariableDeclaration(decl) || this.ts.isPropertyDeclaration(decl))) return null;
 		if (!decl.type || !decl.initializer) return null;
-		const unionMemberNodes = this.collectUnionMemberNodes(decl.type);
-		if (unionMemberNodes.length === 0) return null;
-		const valueNodes = unionMemberNodes.filter((entry) => this.cmp(decl.initializer, entry));
-		return this.createUnionInfo(1, symbol.name, decl.type, valueNodes, this.getValue(decl.initializer));
+		return this.createMatchingUnionInfo(1, symbol.name, decl.type, this.collectUnionMemberNodes(decl.type), decl.initializer);
+	}
+	createMatchingUnionInfo(type, name, initNode, members, expr) {
+		if (members.length === 0) return null;
+		const resolvedExpr = this.resolveExpression(expr);
+		return this.createUnionInfo(type, name, initNode, members.filter((member) => this.cmp(resolvedExpr, member)), getExpressionValueText(this.ts, resolvedExpr) ?? expr.getText());
 	}
 	createCompletionEntryInfos(initNode, entries) {
 		const groupedEntries = /* @__PURE__ */ new Map();
 		for (const entry of entries) {
-			const entryName = this.getCompletionEntryName(entry);
+			const entryName = getTypeNodeValueText(this.ts, entry);
 			if (!entryName) continue;
 			const group = groupedEntries.get(entryName);
 			if (group) group.push(entry);
@@ -367,12 +355,9 @@ var TypeInfoFactory = class {
 		return this.findNodeAtPos(source, position) ?? null;
 	}
 	getSourceFile(fileName) {
-		const program = this.getProgram();
-		if (!program) return null;
-		if (!this.sourceFileCache.has(fileName)) this.sourceFileCache.set(fileName, program.getSourceFile(fileName) ?? null);
-		return this.sourceFileCache.get(fileName) ?? null;
+		return this.syncProgram()?.getSourceFile(fileName) ?? null;
 	}
-	getProgram() {
+	syncProgram() {
 		const program = this.ls.getProgram() ?? null;
 		if (!program) {
 			this.currentProgram = null;
@@ -387,7 +372,6 @@ var TypeInfoFactory = class {
 		return program;
 	}
 	clearCaches() {
-		this.sourceFileCache.clear();
 		this.typeInfoCache.clear();
 		this.completionInfoCache.clear();
 		this.deprecatedUsageCache.clear();
@@ -414,13 +398,17 @@ var TypeInfoFactory = class {
 		}
 		return paramTypes;
 	}
-	getValue(expr) {
-		const resolvedExpr = this.resolveExpression(expr);
-		return getExpressionValueText(this.ts, resolvedExpr) ?? expr.getText();
-	}
 	collectUnionMemberNodes(node, callParent, typeArgMap) {
+		if (this.expandingNodes.has(node)) return [];
+		this.expandingNodes.add(node);
+		try {
+			return this.expandUnionMemberNodes(node, callParent, typeArgMap);
+		} finally {
+			this.expandingNodes.delete(node);
+		}
+	}
+	expandUnionMemberNodes(node, callParent, typeArgMap) {
 		const ts = this.ts;
-		node.codeText = getNodeText(node);
 		if (ts.isUnionTypeNode(node) || ts.isIntersectionTypeNode(node) || ts.isHeritageClause(node)) return node.types.flatMap((tn) => this.collectUnionMemberNodes(tn, callParent, typeArgMap));
 		if (ts.isConditionalTypeNode(node)) return this.collectConditionalTypeNode(node, typeArgMap);
 		if (ts.isIndexedAccessTypeNode(node)) return this.collectIndexedAccessTypeNode(node, typeArgMap);
@@ -514,9 +502,7 @@ var TypeInfoFactory = class {
 	createLiteralNode(node, text, callParent, isRegexPattern) {
 		const litNode = this.ts.factory.createStringLiteral(text);
 		const called = node;
-		const original = (called.isRegexPattern === true && called.callParent != null && called.callParent !== node && this.ts.isTemplateLiteralTypeNode(called.callParent) ? called.callParent : void 0) ?? called.original ?? node;
-		litNode.id = original.id ?? called.id;
-		return calledNode(litNode, callParent, original, isRegexPattern);
+		return calledNode(litNode, callParent, (called.isRegexPattern === true && called.callParent != null && called.callParent !== node && this.ts.isTemplateLiteralTypeNode(called.callParent) ? called.callParent : void 0) ?? called.original ?? node, isRegexPattern);
 	}
 	buildTemplateLiteralNode(node, typeArgMap) {
 		const headText = node.head.text;
@@ -530,9 +516,9 @@ var TypeInfoFactory = class {
 				regexNode.text += escapeRegExp(span.literal.text);
 				spanNodes.push(regexNode);
 			} else if (ts.isLiteralTypeNode(typeNode) && (this.ts.isStringLiteral(typeNode.literal) || this.ts.isNumericLiteral(typeNode.literal))) spanNodes.push(this.createLiteralNode(typeNode, typeNode.literal.text + span.literal.text, node, false));
-			else if (typeNode.kind === ts.SyntaxKind.NumberKeyword) spanNodes.push(this.createLiteralNode(typeNode, "\\d+(\\.\\d+)?" + span.literal.text, node, true));
-			else if (typeNode.kind === ts.SyntaxKind.BooleanKeyword) spanNodes.push(this.createLiteralNode(typeNode, "(true|false)" + span.literal.text, node, true));
-			else if (typeNode.kind === ts.SyntaxKind.StringKeyword) spanNodes.push(this.createLiteralNode(typeNode, ".*" + span.literal.text, node, true));
+			else if (typeNode.kind === ts.SyntaxKind.NumberKeyword) spanNodes.push(this.createLiteralNode(typeNode, "\\d+(\\.\\d+)?" + escapeRegExp(span.literal.text), node, true));
+			else if (typeNode.kind === ts.SyntaxKind.BooleanKeyword) spanNodes.push(this.createLiteralNode(typeNode, "(true|false)" + escapeRegExp(span.literal.text), node, true));
+			else if (typeNode.kind === ts.SyntaxKind.StringKeyword) spanNodes.push(this.createLiteralNode(typeNode, ".*" + escapeRegExp(span.literal.text), node, true));
 			else console.warn("Unknown type of template: ", typeNode);
 			nodes.push(spanNodes);
 		}
@@ -556,8 +542,7 @@ var TypeInfoFactory = class {
 		}
 		return map;
 	}
-	cmp(expr, node) {
-		const resolvedExpr = this.resolveExpression(expr);
+	cmp(resolvedExpr, node) {
 		if (isRegexNode(node) && isStringLikeExpression(this.ts, resolvedExpr)) return new RegExp(`^${node.text}$`).test(resolvedExpr.text);
 		if (node.isRegexPattern === false) return this.cmpLit(resolvedExpr, node);
 		if (!this.ts.isLiteralTypeNode(node)) return false;
@@ -584,30 +569,9 @@ var TypeInfoFactory = class {
 		return this.resolveExpression(initializer, visited);
 	}
 	unwrapExpression(expr) {
-		let current = expr;
-		while (true) {
-			if (this.ts.isParenthesizedExpression(current)) {
-				current = current.expression;
-				continue;
-			}
-			if (this.ts.isAsExpression(current)) {
-				current = current.expression;
-				continue;
-			}
-			if (this.ts.isTypeAssertionExpression(current)) {
-				current = current.expression;
-				continue;
-			}
-			if (this.ts.isSatisfiesExpression?.(current)) {
-				current = current.expression;
-				continue;
-			}
-			if (this.ts.isNonNullExpression(current)) {
-				current = current.expression;
-				continue;
-			}
-			return current;
-		}
+		const ts = this.ts;
+		while (ts.isParenthesizedExpression(expr) || ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr) || ts.isSatisfiesExpression?.(expr) || ts.isNonNullExpression(expr)) expr = expr.expression;
+		return expr;
 	}
 	getReferencedSymbol(expr) {
 		if (!this.ts.isIdentifier(expr) && !this.ts.isPropertyAccessExpression(expr)) return null;
@@ -629,15 +593,6 @@ var TypeInfoFactory = class {
 		}
 		return null;
 	}
-	getCompletionEntryName(node) {
-		if (!this.ts.isLiteralTypeNode(node)) return null;
-		const literal = node.literal;
-		if (this.ts.isStringLiteral(literal) || this.ts.isNumericLiteral(literal) || this.ts.isBigIntLiteral(literal)) return literal.text;
-		if (literal.kind === this.ts.SyntaxKind.TrueKeyword) return "true";
-		if (literal.kind === this.ts.SyntaxKind.FalseKeyword) return "false";
-		if (literal.kind === this.ts.SyntaxKind.NullKeyword) return "null";
-		return null;
-	}
 };
 function extractJSDocMetadataFromNode(ts, node) {
 	const sourceNode = node.original ?? node;
@@ -656,13 +611,11 @@ function extractJSDocMetadataFromNode(ts, node) {
 function getLeadingComment(ts, text, pos) {
 	const comments = ts.getLeadingCommentRanges(text, pos) ?? [];
 	if (comments.length > 0 && text[comments[0].pos + 2] === "*") return comments[comments.length - 1];
-	text = text.substring(0, pos);
-	const commentStart = text.lastIndexOf("/**");
-	if (commentStart === -1) return;
-	const commentEnd = text.lastIndexOf("*/");
-	if (commentEnd === -1) return;
+	const commentStart = text.lastIndexOf("/**", pos - 3);
+	const commentEnd = text.lastIndexOf("*/", pos - 2);
+	if (commentStart === -1 || commentEnd < commentStart) return;
 	const textBetween = text.substring(commentEnd + 2, pos);
-	if (/[^ \t|\n]/.test(textBetween)) return;
+	if (/[^ \t|\r\n]/.test(textBetween)) return;
 	return {
 		pos: commentStart + 3,
 		end: commentEnd,
@@ -741,11 +694,6 @@ function calledNode(node, callParent, original, isRegex) {
 	called.isRegexPattern = isRegex;
 	return called;
 }
-function getNodeText(node) {
-	const text = node.getSourceFile()?.text;
-	if (!text) return "<No Source>";
-	return text.substring(node.getStart(), node.getEnd());
-}
 function getExpressionValueText(ts, expr) {
 	if (isStringLikeExpression(ts, expr)) return expr.text;
 	if (ts.isNumericLiteral(expr) || ts.isBigIntLiteral(expr)) return expr.text;
@@ -757,8 +705,7 @@ function getExpressionValueText(ts, expr) {
 function getTypeNodeValueText(ts, node) {
 	if (!ts.isLiteralTypeNode(node)) return void 0;
 	const literal = node.literal;
-	if (ts.isStringLiteral(literal) || ts.isNumericLiteral(literal)) return literal.text;
-	if (ts.isBigIntLiteral(literal)) return literal.text;
+	if (ts.isStringLiteral(literal) || ts.isNumericLiteral(literal) || ts.isBigIntLiteral(literal)) return literal.text;
 	if (literal.kind === ts.SyntaxKind.TrueKeyword) return "true";
 	if (literal.kind === ts.SyntaxKind.FalseKeyword) return "false";
 	if (literal.kind === ts.SyntaxKind.NullKeyword) return "null";
@@ -787,8 +734,7 @@ function escapeRegExp(text) {
 function cartesianProduct(arrays) {
 	return arrays.reduce((acc, curr) => acc.flatMap((items) => curr.map((item) => [...items, item])), [[]]);
 }
-//#endregion
-//#region src/completion.ts
+// src/completion.ts
 function applyCompletionInfo(ts, completion, info) {
 	addTemplateCompletions(ts, completion, info.templateInfo);
 	markDeprecatedEntries(completion, info.entryInfos);
@@ -862,11 +808,7 @@ function appendKindModifier(kindModifiers, modifier) {
 	modifiers.add(modifier);
 	return [...modifiers].join(",");
 }
-//#endregion
-//#region src/diagnostics.ts
-function createDeprecatedSemanticDiagnostics(ts, usages) {
-	return createDeprecatedDiagnostics(ts, usages);
-}
+// src/diagnostics.ts
 function createDeprecatedDiagnostics(ts, usages) {
 	const diagnostics = [];
 	for (const { node, info } of usages) {
@@ -889,9 +831,8 @@ function formatDeprecatedMessage(nodeText, deprecatedTag) {
 	const tagText = getTagText(deprecatedTag);
 	return tagText ? `${nodeText} is deprecated. ${tagText}` : `${nodeText} is deprecated.`;
 }
-//#endregion
-//#region src/docs.ts
-function addExtraQuickInfo(_ts, quickInfo, typesInfo) {
+// src/docs.ts
+function addExtraQuickInfo(quickInfo, typesInfo) {
 	const primaryInfo = typesInfo[0];
 	if (!primaryInfo) return;
 	switch (primaryInfo.type) {
@@ -932,7 +873,7 @@ function addExtraDocumentation(quickInfo, typesInfo) {
 		const docComment = typeInfo.docComment;
 		if (!docComment || docComment.length === 0) continue;
 		if (newDocs.length > 0) newDocs.push(createTextDisplayPart("\n"));
-		newDocs.push(createMarkdownDisplayPart(formatDocComment(docComment)));
+		newDocs.push(createMarkdownDisplayPart(docComment.join("\n")));
 	}
 	quickInfo.documentation = newDocs;
 }
@@ -1011,9 +952,6 @@ function getParamTagName(tag) {
 	if (parameterName) return parameterName;
 	return "param";
 }
-function formatDocComment(lines) {
-	return lines.join("\n");
-}
 function formatQuotedParamDocComment(lines, extraTags) {
 	const parts = [];
 	if (lines && lines.length > 0) parts.push(...quoteLines(lines));
@@ -1061,8 +999,7 @@ function cloneTag(tag) {
 		text: tag.text?.map((part) => ({ ...part }))
 	};
 }
-//#endregion
-//#region src/plugin.ts
+// src/plugin.ts
 var UnionTypeDocsPlugin = class {
 	constructor(ts) {
 		this.ts = ts;
@@ -1072,9 +1009,10 @@ var UnionTypeDocsPlugin = class {
 		proxy.getQuickInfoAtPosition = (fileName, pos) => {
 			try {
 				const typeInfo = typeInfoFactory.getTypeInfo(fileName, pos);
-				const quickInfo = languageService.getQuickInfoAtPosition(fileName, pos) ?? (typeInfo ? createFallbackQuickInfo(ts, pos, typeInfo) : void 0);
-				if (!quickInfo || !typeInfo) return quickInfo;
-				addExtraQuickInfo(ts, quickInfo, typeInfo);
+				const hasTypeInfo = typeInfo != null && typeInfo.length > 0;
+				const quickInfo = languageService.getQuickInfoAtPosition(fileName, pos) ?? (hasTypeInfo ? createFallbackQuickInfo(ts, pos, typeInfo) : void 0);
+				if (!quickInfo || !hasTypeInfo) return quickInfo;
+				addExtraQuickInfo(quickInfo, typeInfo);
 				return quickInfo;
 			} catch (err) {
 				logPluginError(ts, logger, "Quick Info", err);
@@ -1098,11 +1036,20 @@ var UnionTypeDocsPlugin = class {
 				const entryInfo = typeInfoFactory.getCompletionEntryInfo(fileName, position, name);
 				if (entryInfo) addDeprecatedCompletionEntryDetails(details, entryInfo);
 			} catch (err) {
-				logPluginError(this.ts, logger, "Completion Details", err);
+				logPluginError(ts, logger, "Completion Details", err);
 			}
 			return details;
 		};
-		proxy.getSemanticDiagnostics = (fileName) => appendDeprecatedDiagnostics(languageService.getSemanticDiagnostics(fileName), () => createDeprecatedSemanticDiagnostics(this.ts, typeInfoFactory.getDeprecatedUsageInfos(fileName)), (err) => logPluginError(this.ts, logger, "Semantic Diagnostics", err));
+		proxy.getSemanticDiagnostics = (fileName) => {
+			const diagnostics = languageService.getSemanticDiagnostics(fileName);
+			try {
+				const usages = typeInfoFactory.getDeprecatedUsageInfos(fileName);
+				return [...diagnostics, ...createDeprecatedDiagnostics(ts, usages)];
+			} catch (err) {
+				logPluginError(ts, logger, "Semantic Diagnostics", err);
+				return diagnostics;
+			}
+		};
 		logger.info("[Union type docs plugin] Loaded");
 		return proxy;
 	}
@@ -1115,15 +1062,6 @@ function createLanguageServiceProxy(languageService) {
 	}
 	return proxy;
 }
-function appendDeprecatedDiagnostics(diagnostics, createDiagnostics, onError) {
-	const nextDiagnostics = [...diagnostics];
-	try {
-		nextDiagnostics.push(...createDiagnostics());
-	} catch (err) {
-		onError(err);
-	}
-	return nextDiagnostics;
-}
 function logPluginError(ts, logger, at, err) {
 	logger.msg(`[TS Union Docs ${at} Error]: ${errToString(err)}`, ts.server.Msg.Err);
 }
@@ -1132,9 +1070,7 @@ function errToString(err) {
 	if (typeof err === "string") return err;
 	return String(err);
 }
-//#endregion
-//#region src/index.ts
+// src/index.ts
 module.exports = (mod) => new UnionTypeDocsPlugin(mod.typescript);
-//#endregion
 
 //# sourceMappingURL=index.js.map

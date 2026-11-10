@@ -14,7 +14,6 @@ type TagSections = {
 };
 
 export function addExtraQuickInfo(
-	_ts: typeof TS,
 	quickInfo: TS.QuickInfo,
 	typesInfo: UnionInfo[]
 ) {
@@ -70,7 +69,7 @@ function addExtraDocumentation(quickInfo: TS.QuickInfo, typesInfo: UnionInfo[]) 
 		const docComment = typeInfo.docComment;
 		if (!docComment || docComment.length === 0) continue;
 		if (newDocs.length > 0) newDocs.push(createTextDisplayPart('\n'));
-		newDocs.push(createMarkdownDisplayPart(formatDocComment(docComment)));
+		newDocs.push(createMarkdownDisplayPart(docComment.join('\n')));
 	}
 	quickInfo.documentation = newDocs;
 }
@@ -197,10 +196,6 @@ function getParamTagName(tag: TS.JSDocTagInfo): string {
 	if (parameterName) return parameterName;
 
 	return 'param';
-}
-
-function formatDocComment(lines: string[]): string {
-	return lines.join('\n');
 }
 
 function formatQuotedParamDocComment(
